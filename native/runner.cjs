@@ -4,7 +4,7 @@ const path = require("node:path");
 const crypto = require("node:crypto");
 const { spawn } = require("node:child_process");
 const tasks = require("./tasks.cjs");
-const VERSION = "3.0.0";
+const VERSION = "3.0.1";
 function text(value, limit) {
   return typeof value === "string" ? value.trim().slice(0, limit) : "";
 }

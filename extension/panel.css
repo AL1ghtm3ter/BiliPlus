@@ -552,18 +552,45 @@ h4 {
   display: flex;
   align-items: flex-start;
   gap: 8px;
-  padding: 8px 0;
+  width: 100%;
+  padding: 8px 6px;
+  border: 0;
   border-bottom: 1px solid var(--line);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--ink);
+  text-align: left;
   font-size: 12px;
   line-height: 1.8;
 }
-.subtitle-line button {
-  border: 0;
-  padding: 0;
+.subtitle-time {
   flex: none;
   color: #c44c75;
-  background: transparent;
   font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.subtitle-line > span:last-child {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.subtitle-line:hover {
+  background: color-mix(in srgb, var(--brand) 6%, var(--surface));
+}
+.subtitle-line[aria-current="true"] {
+  background: color-mix(in srgb, var(--brand) 14%, var(--surface));
+  font-weight: 500;
+}
+.subtitle-line[aria-current="true"] .subtitle-time {
+  color: var(--secondary);
+}
+.follow-subtitle {
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  color: var(--secondary);
+  background: var(--surface);
+  font-size: 12px;
 }
 .question-form {
   display: flex;
@@ -674,6 +701,9 @@ textarea::placeholder {
 :host([data-theme="dark"]) .pane-badge {
   background: #343a45;
   color: #c8d1df;
+}
+:host([data-theme="dark"]) .subtitle-time {
+  color: #ff9fbe;
 }
 :host([data-theme="dark"]) .summary-pane[data-empty="true"] {
   border-color: #693f50;

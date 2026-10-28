@@ -266,7 +266,7 @@ test("83 returned subtitle lines stay inside the reader and their time buttons s
   assert.equal(shadow.querySelector(".subtitle-placeholder").hidden, true);
   assert.equal(shadow.querySelector(".read").textContent, "重新读取字幕");
   assert.equal(shadow.querySelector(".pane-badge").textContent, "字幕已就绪");
-  shadow.querySelectorAll(".subtitle-line button")[82].click();
+  shadow.querySelectorAll(".subtitle-line")[82].click();
   assert.equal(h.document.querySelector("video").currentTime, 82);
   assert.equal(
     parseFloat(host.style.getPropertyValue("--bcx-panel-height")),

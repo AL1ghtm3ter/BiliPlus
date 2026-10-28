@@ -110,26 +110,37 @@ async function videoInfo(snapshot, pageUrl, signal) {
   }
   return { video, tracks };
 }
-async function signedQuery(params, signal) {
+async function signingKeys(signal) {
   const nav = await getJSON(
       "https://api.bilibili.com/x/web-interface/nav",
       signal,
     ),
     keys = nav.data?.wbi_img;
   if (!keys) throw Error("B站没有返回访问签名，请确认已经登录。");
+  return keys;
+}
+async function signedQuery(params, signal, keysPromise) {
+  const keys = await (keysPromise || signingKeys(signal));
   return BiliSubtitles.wbiQuery(params, keys.img_url, keys.sub_url);
 }
-async function modernSubtitleTracks(video, signal) {
-  let aid = video.aid;
-  if (!/^\d{1,20}$/.test(aid || "")) {
+async function modernSubtitleTracks(
+  video,
+  signal,
+  getKeys = () => signingKeys(signal),
+) {
+  const aidPromise = (async () => {
+    if (/^\d{1,20}$/.test(video.aid || "")) return video.aid;
     const info = await getJSON(
       "https://api.bilibili.com/x/web-interface/view?bvid=" + video.bvid,
       signal,
     );
     if (info.code !== 0 || !/^\d{1,20}$/.test(String(info.data?.aid || "")))
       throw Error("无法读取当前视频的字幕信息。");
-    aid = String(info.data.aid);
-  }
+    return String(info.data.aid);
+  })();
+  // These requests are independent; share only this load's keys, not a global
+  // login-sensitive cache, and let Promise.all observe either failure/abort.
+  const [aid, keys] = await Promise.all([aidPromise, getKeys()]);
   const query = await signedQuery(
     {
       oid: video.cid,
@@ -141,6 +152,7 @@ async function modernSubtitleTracks(video, signal) {
       web_location: 1315873,
     },
     signal,
+    keys,
   );
   const response = await fetch(
     "https://api.bilibili.com/x/v2/subtitle/web/view?" + query,
@@ -293,6 +305,8 @@ async function loadSubtitles(
   const { video, tracks } = await videoInfo(snapshot, pageUrl, signal);
   const key = "transcript:" + video.bvid + ":" + video.cid;
   const cached = (await chrome.storage.local.get(key))[key];
+  let keysPromise;
+  const getKeys = () => (keysPromise ||= signingKeys(signal));
   let track = BiliSubtitles.pickTrack(tracks);
   if (
     !force &&
@@ -303,11 +317,14 @@ async function loadSubtitles(
   )
     return cached.input;
   if (!track)
-    track = BiliSubtitles.pickTrack(await modernSubtitleTracks(video, signal));
+    track = BiliSubtitles.pickTrack(
+      await modernSubtitleTracks(video, signal, getKeys),
+    );
   if (!track) {
     const query = await signedQuery(
       { bvid: video.bvid, cid: video.cid },
       signal,
+      getKeys(),
     );
     const player = await getJSON(
       "https://api.bilibili.com/x/player/wbi/v2?" + query,
@@ -349,6 +366,7 @@ async function loadSubtitles(
         fourk: 0,
       },
       signal,
+      getKeys(),
     );
     const play = await getJSON(
       "https://api.bilibili.com/x/player/wbi/playurl?" + query,

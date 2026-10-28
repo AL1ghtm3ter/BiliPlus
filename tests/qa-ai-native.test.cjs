@@ -329,7 +329,7 @@ test("QA copy-current-content follows the ad tab rather than an old summary and 
   assert.match(h.copied.at(-1), /会员购买引导/);
   assert.doesNotMatch(h.copied.at(-1), /按照字幕总结的方法/);
 });
-test("QA subtitle preview limits 200 rows while exports include every line in SRT TXT JSON and reread bypasses cache", async () => {
+test("QA subtitle reader displays every line and exports full SRT TXT JSON while reread bypasses cache", async () => {
   const h = await panel();
   await h.click(".read");
   const subs = Array.from({ length: 205 }, (_, i) => ({
@@ -348,7 +348,9 @@ test("QA subtitle preview limits 200 rows while exports include every line in SR
     },
     "subtitles",
   );
-  assert.equal(h.shadow.querySelectorAll(".subtitle-line").length, 200);
+  assert.equal(h.shadow.querySelectorAll(".subtitle-line").length, 205);
+  assert.match(h.$(".transcript").lastElementChild.textContent, /字幕204/);
+  assert.doesNotMatch(h.$(".transcript-meta").textContent, /预览前/);
   assert.match(h.$(".transcript-meta").textContent, /205/);
   for (const format of ["srt", "txt", "json"]) {
     const selector = h.$(".export-format");

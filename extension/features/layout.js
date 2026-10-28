@@ -41,18 +41,23 @@
         "data-highlight": String(active && s.highlightControlButton),
       });
       const icon = document.createElementNS(
-          "http://www.w3.org/2000/svg",
-          "svg",
-        ),
-        panes = document.createElementNS("http://www.w3.org/2000/svg", "path");
+        "http://www.w3.org/2000/svg",
+        "svg",
+      );
       icon.setAttribute("viewBox", "0 0 24 24");
       icon.setAttribute("aria-hidden", "true");
-      panes.setAttribute("d", "M3.5 5.5h17v13h-17zM14.5 5.5v13");
-      panes.setAttribute("fill", "none");
-      panes.setAttribute("stroke", "currentColor");
-      panes.setAttribute("stroke-width", "1.8");
-      panes.setAttribute("stroke-linejoin", "round");
-      icon.append(panes);
+      icon.setAttribute("fill", "currentColor");
+      for (const x of [2, 13]) {
+        const pane = document.createElementNS(
+          "http://www.w3.org/2000/svg",
+          "rect",
+        );
+        pane.setAttribute("x", String(x));
+        pane.setAttribute("y", "3");
+        pane.setAttribute("width", "9");
+        pane.setAttribute("height", "18");
+        icon.append(pane);
+      }
       button.append(icon);
       scope.on(button, "click", (event) => {
         if (stopped) return;

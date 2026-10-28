@@ -1,6 +1,6 @@
 {
   "name": "biliplus",
-  "version": "3.0.0",
+  "version": "3.0.1",
   "private": true,
   "license": "MIT",
   "description": "BiliPlus 小电视助手: playback, split view, recommendation history, filtering and optional on-device subtitle analysis",

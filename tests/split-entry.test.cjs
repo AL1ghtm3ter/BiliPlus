@@ -104,6 +104,55 @@ const host = (h) =>
   h.document.querySelector('[data-bcx-widget="split-control"]');
 const button = (h) => host(h)?.shadowRoot.querySelector("button");
 
+test("native split icon is a solid two-column symbol with a narrow gap and inherited highlight color", async () => {
+  for (const [layout, highlighted] of [
+    [{}, false],
+    [{ split: true, splitActive: true }, true],
+    [{ split: true, splitActive: true, highlightControlButton: false }, false],
+  ]) {
+    const h = await harness({ layout }),
+      entry = button(h),
+      icon = entry.querySelector("svg"),
+      panes = [...icon.querySelectorAll("rect")];
+    assert.equal(
+      entry.textContent,
+      "",
+      "the native control has no visible label",
+    );
+    assert.equal(icon.getAttribute("viewBox"), "0 0 24 24");
+    assert.equal(icon.getAttribute("fill"), "currentColor");
+    assert.equal(icon.getAttribute("aria-hidden"), "true");
+    assert.equal(panes.length, 2, "two solid panes replace the outlined frame");
+    assert.equal(icon.querySelector("path"), null);
+    assert.equal(icon.querySelector("[stroke]"), null);
+    const [first, second] = panes.map((pane) =>
+      Object.fromEntries(
+        ["x", "y", "width", "height"].map((name) => [
+          name,
+          Number(pane.getAttribute(name)),
+        ]),
+      ),
+    );
+    assert(first.width > 0 && first.height > first.width);
+    assert.equal(first.y, second.y);
+    assert.equal(first.width, second.width);
+    assert.equal(first.height, second.height);
+    const gap = second.x - first.x - first.width;
+    assert(gap > 0 && gap < first.width / 2, "the pane gap stays narrow");
+    assert.equal(entry.getAttribute("data-highlight"), String(highlighted));
+    assert.equal(
+      entry.getAttribute("title"),
+      entry.getAttribute("aria-label"),
+      "the descriptive label remains in the native tooltip",
+    );
+    assert.equal(
+      host(h).previousElementSibling.className,
+      "bpx-player-ctrl-pip",
+      "the icon remains after the native picture-in-picture control",
+    );
+  }
+});
+
 test("default playback shows a small native split entry while leaving video and comments in their original layout", async () => {
   const h = await harness(),
     control = host(h);

@@ -27,7 +27,7 @@
  <div class="actions"><button class="start primary" type="button">开始总结</button></div>
  <div class="result" hidden><section class="overview"><h3>视频概要</h3><div class="summary"></div><h3>重点</h3><ul class="points"></ul></section><div class="summary-resizer" role="separator" tabindex="0" aria-label="调整概要与分段高度" aria-orientation="horizontal" aria-valuemin="30" aria-valuemax="80" aria-valuenow="62"></div><section class="chapters"><div class="section-heading"><h3>视频分段</h3><span>已完成</span></div><ol class="segments"></ol></section></div>
 </div>
-<div data-pane="subtitles" class="subtitle-pane"><div class="subtitle-placeholder"><h4>视频字幕</h4><p>读取视频字幕，支持复制、导出和整理成文。无字幕时使用本机识别。</p></div><div class="subtitle-toolbar"><div class="actions"><button class="read primary" type="button">读取字幕</button><button class="polish" type="button">整理成文</button></div><div class="export-actions" hidden><select class="export-format" aria-label="导出字幕"><option value="">导出</option><option value="srt">SRT</option><option value="txt">TXT</option><option value="json">JSON</option></select></div></div><p class="transcript-meta"></p><div class="transcript"></div><section class="article-area" hidden><h3>润色文章</h3><button class="copy-article" type="button">复制文章</button><div class="article"></div></section></div>
+<div data-pane="subtitles" class="subtitle-pane"><div class="subtitle-placeholder"><h4>视频字幕</h4><p>读取视频字幕，支持复制、导出和整理成文。无字幕时使用本机识别。</p></div><div class="subtitle-toolbar"><div class="actions"><button class="read primary" type="button">读取字幕</button><button class="polish" type="button">整理成文</button></div><div class="export-actions" hidden><select class="export-format" aria-label="导出字幕"><option value="">导出</option><option value="srt">SRT</option><option value="txt">TXT</option><option value="json">JSON</option></select><button class="follow-subtitle" type="button" hidden title="恢复字幕随播放定位">跟随播放</button></div></div><p class="transcript-meta"></p><div class="transcript"></div><section class="article-area" hidden><h3>润色文章</h3><button class="copy-article" type="button">复制文章</button><div class="article"></div></section></div>
 <div data-pane="chat" class="chat-pane" hidden><p class="hint">围绕视频内容提问，回答会引用字幕时间。</p><div class="chat-log" role="log" aria-live="polite"></div><form class="question-form"><label for="question">你的问题</label><textarea id="question" maxlength="6000" rows="3" placeholder="输入你想了解的问题…"></textarea><button class="ask primary" type="submit">发送</button></form></div>
 <div data-pane="ads" hidden><h4>广告识别</h4><p class="hint">识别视频中的口播推广与植入广告。可查看依据、跳转或保留片段。</p><button class="detect primary" type="button">识别广告</button><div class="ads-result"></div></div>
 <p class="footnote"><span class="engine-note">本地模型分析</span> · <span class="source-note">优先使用已有字幕</span></p>
@@ -63,6 +63,10 @@
     autoAsrDone = false,
     video = null,
     videoListener = null,
+    subtitleRows = [],
+    subtitleCues = [],
+    activeSubtitle = -1,
+    subtitleScrollUntil = 0,
     pageLoaded = !document.readyState || document.readyState === "complete",
     mountStarted = Date.now(),
     selectedTab = "subtitles",
@@ -71,6 +75,12 @@
     heightGesture = null;
   const taskStates = new Map(),
     taskPane = (kind) => (kind === "polish" ? "subtitles" : kind);
+  const subtitleVideoEvents = [
+    "timeupdate",
+    "seeking",
+    "seeked",
+    "loadedmetadata",
+  ];
   const key = () =>
       location.pathname +
       location.search +
@@ -104,6 +114,7 @@
         name
       ] || "AI助手";
     renderTaskState();
+    if (name === "subtitles") syncSubtitle(true);
   }
   function renderTaskState() {
     const state = taskStates.get(selectedTab);
@@ -229,10 +240,8 @@
     ) {
       stop();
       clearAd();
-      if (video && videoListener)
-        video.removeEventListener("timeupdate", videoListener);
-      video = null;
-      videoListener = null;
+      unwatchVideo();
+      clearSubtitleSync();
       ads = [];
       removeMarkers();
       host.remove();
@@ -297,7 +306,9 @@
     $('[data-pane="summary"]').setAttribute("data-empty", "true");
     $(".subtitle-placeholder").hidden = false;
     $(".chat-log").replaceChildren();
+    clearSubtitleSync();
     $(".transcript").replaceChildren();
+    $(".transcript").scrollTop = 0;
     $(".transcript-meta").textContent = "";
     $(".export-actions").hidden = true;
     $(".subtitle-pane").removeAttribute("data-ready");
@@ -384,6 +395,7 @@
       return;
     }
     player.currentTime = time;
+    syncSubtitle();
   }
   function paragraphs(target, text) {
     target.replaceChildren(
@@ -441,6 +453,7 @@
     log.scrollTop = log.scrollHeight;
   }
   function showTranscript(data) {
+    clearSubtitleSync();
     transcript = data;
     $(".subtitle-placeholder").hidden = true;
     $(".copy").disabled = false;
@@ -453,24 +466,107 @@
       " 条 · " +
       (data.source === "local-asr"
         ? "本机识别（" + data.language + "）"
-        : "已有字幕（" + data.language + "）") +
-      (data.subtitles.length > 200
-        ? " · 页面预览前 200 条，导出包含全部字幕"
-        : "");
+        : "已有字幕（" + data.language + "）");
     $(".transcript-meta").textContent =
       data.subtitles.length +
       " 条 · " +
-      (data.source === "local-asr" ? "本机识别" : "已有字幕") +
-      (data.subtitles.length > 200 ? " · 预览前200条" : "");
-    $(".transcript").replaceChildren(
-      ...data.subtitles.slice(0, 200).map((s) => {
-        const row = create("div", undefined, { class: "subtitle-line" }),
-          button = create("button", stamp(s.start), { type: "button" });
-        button.addEventListener("click", () => seek(s.start));
-        row.append(button, create("span", s.text));
-        return row;
-      }),
-    );
+      (data.source === "local-asr" ? "本机识别" : "已有字幕");
+    subtitleRows = data.subtitles.map((s, index) => {
+      const row = create("button", undefined, {
+        class: "subtitle-line",
+        type: "button",
+        "data-subtitle-index": index,
+        "aria-label": "跳转到 " + stamp(s.start) + " " + s.text,
+      });
+      row.append(
+        create("span", stamp(s.start), { class: "subtitle-time" }),
+        create("span", s.text),
+      );
+      return row;
+    });
+    let maxEnd = -Infinity;
+    subtitleCues = data.subtitles
+      .map((s, index) => ({ start: s.start, end: s.end, index }))
+      .sort((a, b) => a.start - b.start || a.index - b.index)
+      .map((cue) => ({ ...cue, maxEnd: (maxEnd = Math.max(maxEnd, cue.end)) }));
+    $(".transcript").replaceChildren(...subtitleRows);
+    $(".transcript").scrollTop = 0;
+    syncSubtitle(true);
+  }
+  function setActiveSubtitle(index) {
+    if (index === activeSubtitle) return;
+    subtitleRows[activeSubtitle]?.removeAttribute("aria-current");
+    activeSubtitle = index;
+    subtitleRows[index]?.setAttribute("aria-current", "true");
+  }
+  function clearSubtitleSync() {
+    setActiveSubtitle(-1);
+    subtitleRows = [];
+    subtitleCues = [];
+    subtitleScrollUntil = 0;
+    $(".follow-subtitle").hidden = true;
+  }
+  function syncSubtitle(force = false) {
+    if (
+      !transcript ||
+      !subtitleCues.length ||
+      !config().ai.enabled ||
+      videoKey !== key()
+    )
+      return;
+    if (!video || video !== document.querySelector("video")) return;
+    const time = video.currentTime;
+    if (!Number.isFinite(time)) return;
+    let low = 0,
+      high = subtitleCues.length;
+    while (low < high) {
+      const mid = (low + high) >>> 1;
+      if (subtitleCues[mid].start <= time) low = mid + 1;
+      else high = mid;
+    }
+    let index = -1;
+    for (let i = low - 1; i >= 0 && subtitleCues[i].maxEnd > time; i--) {
+      if (subtitleCues[i].end > time) {
+        index = subtitleCues[i].index;
+        break;
+      }
+    }
+    setActiveSubtitle(index);
+    const suspended = Date.now() < subtitleScrollUntil;
+    $(".follow-subtitle").hidden = !suspended;
+    if (
+      index < 0 ||
+      selectedTab !== "subtitles" ||
+      host.hasAttribute("data-collapsed") ||
+      (suspended && !force)
+    )
+      return;
+    const list = $(".transcript"),
+      row = subtitleRows[index],
+      height = list.clientHeight;
+    if (
+      !(height > 0) ||
+      !row?.getBoundingClientRect ||
+      !list.getBoundingClientRect
+    )
+      return;
+    const box = list.getBoundingClientRect(),
+      rect = row.getBoundingClientRect();
+    if (!(rect.height > 0)) return;
+    const top = box.top + (list.clientTop || 0);
+    if (force || rect.top < top || rect.bottom > top + height)
+      list.scrollTop = Math.max(
+        0,
+        Math.min(
+          list.scrollHeight - height,
+          list.scrollTop + rect.top - top - (height - rect.height) / 2,
+        ),
+      );
+  }
+  function pauseSubtitleFollow() {
+    if (!transcript) return;
+    subtitleScrollUntil = Date.now() + 5000;
+    $(".follow-subtitle").hidden = false;
   }
   function showAds(data) {
     ads = data.segments;
@@ -840,15 +936,30 @@
       "检测到广告：" + segment.label + " · " + left + " 秒后跳过";
     if (left <= 0) skipAd(segment);
   }
+  function unwatchVideo() {
+    if (video && videoListener)
+      for (const name of subtitleVideoEvents)
+        video.removeEventListener(name, videoListener);
+    video = null;
+    videoListener = null;
+  }
   function watchVideo() {
     const next = document.querySelector("video");
-    if (!next || typeof next.addEventListener !== "function" || next === video)
+    if (next === video) return;
+    unwatchVideo();
+    if (!next || typeof next.addEventListener !== "function") {
+      setActiveSubtitle(-1);
       return;
-    if (video && videoListener)
-      video.removeEventListener("timeupdate", videoListener);
+    }
     video = next;
-    videoListener = adTick;
-    video.addEventListener("timeupdate", videoListener);
+    videoListener = () => {
+      if (video !== document.querySelector("video")) return;
+      syncSubtitle();
+      adTick();
+    };
+    for (const name of subtitleVideoEvents)
+      video.addEventListener(name, videoListener);
+    syncSubtitle(true);
   }
   function removeMarkers() {
     for (const node of document.querySelectorAll?.("[data-bcx-marker]") || [])
@@ -970,6 +1081,48 @@
       exportSubtitles(event.target.value);
     event.target.value = "";
   });
+  $(".transcript").addEventListener("click", (event) => {
+    const row = event.target.closest?.(".subtitle-line");
+    if (!row || !$(".transcript").contains(row)) return;
+    const cue = transcript?.subtitles[Number(row.dataset.subtitleIndex)];
+    if (!cue) return;
+    subtitleScrollUntil = 0;
+    seek(cue.start);
+    syncSubtitle(true);
+  });
+  $(".transcript").addEventListener("wheel", pauseSubtitleFollow, {
+    passive: true,
+  });
+  $(".transcript").addEventListener("touchstart", pauseSubtitleFollow, {
+    passive: true,
+  });
+  $(".transcript").addEventListener("pointerdown", (event) => {
+    if (event.target === $(".transcript")) pauseSubtitleFollow();
+  });
+  $(".transcript").addEventListener("keydown", (event) => {
+    if (
+      [
+        "ArrowUp",
+        "ArrowDown",
+        "PageUp",
+        "PageDown",
+        "Home",
+        "End",
+        "Space",
+      ].includes(event.code || event.key)
+    )
+      pauseSubtitleFollow();
+    if (["Enter", "Space", " "].includes(event.code || event.key))
+      event.stopPropagation();
+  });
+  $(".transcript").addEventListener("keyup", (event) => {
+    if (["Enter", "Space", " "].includes(event.code || event.key))
+      event.stopPropagation();
+  });
+  $(".follow-subtitle").addEventListener("click", () => {
+    subtitleScrollUntil = 0;
+    syncSubtitle(true);
+  });
   $(".settings").addEventListener("click", () =>
     chrome.runtime.sendMessage({ type: "open-settings" }).catch(() => {}),
   );
@@ -981,6 +1134,7 @@
       "aria-label",
       collapsed ? "展开视频助手" : "收起视频助手",
     );
+    if (!collapsed) syncSubtitle(true);
   });
   launcher.addEventListener("click", () => {
     panel.hidden = false;
