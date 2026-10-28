@@ -24,6 +24,7 @@ test("public source tree excludes generated host state, historical captures and 
     ".gitattributes",
     ".github/workflows/ci.yml",
     "native/setup-local.cjs",
+    "native/local-summary.cjs",
     "scripts/bootstrap-node.ps1",
     "scripts/source-files.cjs",
     "extension/icons/icon128.png",

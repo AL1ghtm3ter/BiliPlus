@@ -258,7 +258,7 @@ test("speed controls and shortcuts change the actual video and restore its origi
   assert.equal(video.playbackRate, 2);
   const host = h.document.querySelector('[data-bcx-widget="speed"]');
   assert(host);
-  host.querySelectorAll("button")[2].click();
+  host.querySelector('[data-bcx-speed-option="3"]').click();
   assert.equal(video.playbackRate, 3);
   assert.equal(h.patches.at(-1).value, 3);
   const event = new h.window.Event("keydown", { cancelable: true });
@@ -318,7 +318,7 @@ test("filter/purify changes only matched local cards and restores all inserted a
   assert(!cards[0].hasAttribute("data-bcx-filtered"));
   assert.equal(h.document.querySelectorAll("style").length, 0);
 });
-test("split layout moves player and comments, exposes AI mount, then restores original parents and order", () => {
+test("right comments move player and comments then restore original parents and order", () => {
   const h = harness(
     '<main class="left-container"><h1>标题</h1><div id="playerWrap"><video></video></div><div class="basic-desc-info-text">简介</div><div id="commentapp">评论</div></main><aside class="right-container">推荐</aside>',
   );
@@ -326,10 +326,10 @@ test("split layout moves player and comments, exposes AI mount, then restores or
     comments = h.document.querySelector("#commentapp"),
     parent = player.parentNode,
     old = parent.innerHTML;
-  const stop = h.start("layout", { layout: { split: true } });
-  assert(player.closest("[data-bcx-left]"));
-  assert(comments.closest("[data-bcx-side]"));
-  assert(h.state.aiMount);
+  const stop = h.start("layout", { layout: { rightComments: true } });
+  assert(player.closest("[data-bcx-player-column]"));
+  assert(comments.closest("[data-bcx-comment-column]"));
+  assert.equal(h.document.querySelectorAll("[data-bcx-tab]").length, 0);
   stop();
   assert.equal(player.parentNode, parent);
   assert.equal(comments.parentNode, parent);
@@ -566,36 +566,39 @@ test("advanced rules retain custom shortcuts, duration limits, dates and known e
   assert(!C.isPlaybackLocation({ pathname: "/list/not-a-list" }));
 });
 
-test("split tabs keep details visible, attach late lists, persist tab and width, and restore original nodes", () => {
+test("right comments attach a late native comment tree, persist comment width, and leave unrelated lists in place", () => {
   const h = harness(
-    '<main id="mirror-vdcon"><div class="left-container"><h1>测试标题</h1><div id="playerWrap"><video></video><div class="bpx-player-control-bottom-right"><span class="bpx-player-ctrl-pip"></span></div></div><div class="basic-desc-info-text">原简介</div><div id="commentapp">原评论</div></div><aside class="right-container"></aside></main>',
+    '<main id="mirror-vdcon"><div class="left-container"><h1>测试标题</h1><div id="playerWrap"><video></video></div><div class="basic-desc-info-text">原简介</div></div><aside class="right-container"></aside></main>',
   );
   const stop = h.start("layout", {
-      layout: { split: true, activeTab: "detail", sideWidthPx: 460 },
+      layout: { rightComments: true, commentWidthPx: 460 },
     }),
-    detail = h.document.querySelector("[data-bcx-pane=detail]");
-  assert(detail.textContent.includes("测试标题"));
-  assert(detail.textContent.includes("原简介"));
-  assert.equal(detail.hidden, false);
-  assert(h.document.querySelector("[data-bcx-widget=split-control]"));
-  const list = h.document.createElement("div");
+    list = h.document.createElement("div"),
+    comments = h.document.createElement("bili-comments");
   list.className = "video-pod";
   list.textContent = "稍后加载的合集";
-  h.document.body.append(list);
+  h.document.querySelector(".right-container").append(list);
+  h.document.querySelector(".left-container").append(comments);
   h.intervals[0]();
-  assert(list.closest("[data-bcx-pane=collection]"));
-  h.document.querySelector("[data-bcx-tab=ai]").click();
-  assert.equal(h.patches.at(-1).key, "layout.activeTab");
-  assert.equal(h.patches.at(-1).value, "ai");
+  assert(comments.closest("[data-bcx-comment-column]"));
+  assert.equal(list.parentElement.className, "right-container");
+  assert(
+    !h.document.querySelector("[data-bcx-tab],[data-bcx-widget=split-control]"),
+  );
   const key = new h.window.Event("keydown", { cancelable: true });
   key.code = "ArrowLeft";
   h.document.querySelector("[role=separator]").dispatchEvent(key);
-  assert.equal(h.patches.at(-1).key, "layout.sideWidthPx");
+  assert.equal(h.patches.at(-1).key, "layout.commentWidthPx");
   assert.equal(h.patches.at(-1).value, 480);
   stop();
-  assert.equal(list.parentNode, h.document.body);
-  assert(!h.document.querySelector("[data-bcx-split]"));
-  assert(!h.document.querySelector("[data-bcx-widget=split-control]"));
+  assert.equal(comments.parentElement.className, "left-container");
+  assert.equal(list.parentElement.className, "right-container");
+  assert(!h.document.querySelector("[data-bcx-right-comments]"));
+  h.intervals[0]();
+  assert(
+    !h.document.querySelector("[data-bcx-right-comments]"),
+    "a stale scan cannot recreate a disabled right-comments layout",
+  );
 });
 
 test("hover preview survives the gap between the card and its interactive timeline", async () => {

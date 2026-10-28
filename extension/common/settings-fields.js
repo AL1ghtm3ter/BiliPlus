@@ -8,13 +8,13 @@
   });
   const FIELDS = {
     ai: [
-      field("ai.provider", "内容处理方式", {
+      field("ai.provider", "文字分析服务", {
         type: "select",
         choices: [
           ["local", "本机模型（无需账号）"],
           ["codex", "Codex（已有账号）"],
         ],
-        hint: "默认在本机处理；也可自行选择已登录的 Codex。",
+        hint: "仅控制总结、问答、广告识别和整理成文；语音转写始终在本机使用 Whisper。",
       }),
       field("ai.localModel", "本机模型", {
         type: "select",
@@ -110,29 +110,9 @@
       }),
     ],
     layout: [
-      field("layout.sideWidthPx", "分屏右栏宽度（像素）", {
-        min: 300,
-        max: 800,
-        hint: "也可在分屏中拖动分隔线调整。",
-      }),
       field("layout.commentWidthPx", "右侧评论宽度（像素）", {
         min: 300,
         max: 800,
-      }),
-      field("layout.splitActive", "启用分屏时自动展开", { type: "checkbox" }),
-      field("layout.highlightControlButton", "突出显示播放器分屏按钮", {
-        type: "checkbox",
-      }),
-      field("layout.activeTab", "分屏默认标签", {
-        type: "select",
-        choices: [
-          ["detail", "详情"],
-          ["collection", "合集"],
-          ["comments", "评论"],
-          ["ai", "AI 助手"],
-          ["danmaku", "弹幕列表"],
-          ["recommendations", "相关推荐"],
-        ],
       }),
       field("home.backgroundSource", "极简首页背景来源", {
         type: "select",

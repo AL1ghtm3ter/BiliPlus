@@ -1,6 +1,6 @@
-# 架构与维护说明 · 3.0.0 Public Beta
+# 架构与维护说明 · 3.0.3 Public Beta
 
-小电视助手 · BiliPlus 是 Chrome Manifest V3 扩展，使用原生 HTML/CSS/JS。倍速、分屏、历史与净化在内容脚本中完成。字幕分析通过 Windows Native Messaging 桥接，默认调用本机 Ollama；Codex CLI 为显式可选。ASR 是单独安装的 Python/faster-whisper 环境。
+小电视助手 · BiliPlus 是 Chrome Manifest V3 扩展，使用原生 HTML/CSS/JS。倍速、布局、历史与净化在内容脚本中完成。字幕分析通过 Windows Native Messaging 桥接，默认调用本机 Ollama；Codex CLI 为显式可选。ASR 是单独安装的 Python/faster-whisper 环境。
 
 ## 数据链路
 
@@ -28,6 +28,8 @@ flowchart TD
 
 读取和导出已有字幕不调用模型。默认文本分析仅发往固定本机 Ollama 地址，模型安装/下载仍需网络。选择 Codex 时字幕会交给其模型服务；本机失败不会自动回退 Codex。
 
+音频转写与文字服务选择独立：`transcribe` 始终分派到本机 ASR，下载的音频不会交给 Codex。其后可把文字交给所选服务分析。
+
 ## 模块职责
 
 | 路径                                               | 职责                                                                     |
@@ -41,12 +43,14 @@ flowchart TD
 | `extension/common/ui.js`                           | 主题、内置每日文字、本地背景校验及缩放                                   |
 | `extension/features/runtime.js`、`index.js`        | Scope 清理、路由与设置变化、功能启动/重建                                |
 | `extension/features/player.js`                     | 原生倍速菜单、快捷键、全屏进度、公开评论属地                             |
-| `extension/features/layout.js`                     | 分屏入口、侧栏标签/宽度、节点移动及还原                                  |
+| `extension/features/layout.js`                     | 独立右侧评论、宽度调节、节点移动及还原                                  |
 | `extension/features/home.js`                       | 推荐历史、封面、悬停预览、加载优化、极简首页                             |
 | `extension/features/filter.js`                     | 卡片过滤、逐项净化、连续空批次保护                                       |
 | `extension/popup.*`、`options.*`                   | 快捷开关、完整设置、模型准备、导入导出与诊断                             |
 | `native/Launcher.cs`                               | 无窗口启动器源码，启动 Node并转发原生消息字节流                          |
+| `native/RuntimeHost.cs`、`runtime-start.cjs`          | Windows 模型服务宿主；通过无窗口控制台启动服务，桥接退出后保持运行       |
 | `native/host.cjs`                                  | 分帧、任务分派、状态、取消、最近任务元数据                               |
+| `native/local-summary.cjs`                         | 独立全文概要与章节任务、占位重试、原字幕摘录、字幕编号到实际时间映射      |
 | `native/runner.cjs`、`tasks.cjs`、`*.schema.json`  | 任务输入/输出校验；所选 provider 路由；可选 Codex 进程                   |
 | `native/local-model.cjs`、`setup-local.cjs`        | Ollama 检查/安装/启动、模型下载、本机生成与命令行准备                    |
 | `native/asr.cjs`、`asr.py`、`setup_asr.py`         | 限域音轨、语音环境、模型加载、转写与清理                                 |
@@ -68,6 +72,8 @@ Chrome 按需启动启动器，启动器读取本机 Node 路径并运行 host.c
 
 状态、文字任务、转写与本机模型准备经原生连接分派。设置页的 `bili-model-setup` 端口协议见 [MODEL-SETUP-UI.md](MODEL-SETUP-UI.md)。取消、端口断开、切换视频或离开播放路由会传递 AbortSignal，终止对应处理并清理本次临时文件。Node 桥接没有另设 HTTP 监听；Ollama 使用自己的本机服务。
 
+Windows 下，`runtime-start.cjs` 仅将 GUI 子系统的 `RuntimeHost.exe` 作为独立后台进程。宿主以 `UseShellExecute=false / CreateNoWindow=true` 启动 `ollama serve`，避免将 `DETACHED_PROCESS` 与 `CREATE_NO_WINDOW` 同时用于模型服务，导致后续模型子进程重新创建可见控制台。就绪前发送 `cancel` 只停止宿主刚创建的服务；就绪后关闭控制管道表示交接，宿主与服务继续运行。已有健康 Ollama 服务直接复用。两个 GUI 程序均由安装器编译后才发布到本机目录，源码包只包含源码。
+
 ## 输入、模型与输出边界
 
 | 层           | 当前边界                                                                                               |
@@ -83,6 +89,8 @@ Chrome 按需启动启动器，启动器读取本机 Node 路径并运行 host.c
 28,000 是字节上限，不能与通用字符上限或模型标称上下文长度混为一谈。当前不自动分块长字幕。Qwen3:4b为约4B参数/Q4_K_M，模型下载约2.5GB；该大小不是运行内存需求。
 
 本机模型输入中的字幕等被当成不可信材料，不提供工具执行或文件访问能力；可选 Codex 使用独立进程及受限模式。结果显示使用纯文本，输出结构和时间校验不等于内容准确性保证。
+
+`native/local-summary.cjs` 为本机总结构造字幕编号 Schema。模型仅选择真实且位于视频内的 `startIndex`，程序映射对应字幕起点，排序并合并同起点主题；结束时间取下一主题起点或视频时长。合并保留完整主题和说明，超限明确拒绝，最终仍通过通用时间校验。其他文字任务和 Codex 协议保持原时间字段。
 
 ## 页面兼容与存储
 

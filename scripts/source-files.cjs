@@ -27,10 +27,13 @@ function sourceFiles(root) {
   walk("tests", (name) => /\.test\.cjs$/.test(name));
   for (const name of [
     "native/Launcher.cs",
+    "native/RuntimeHost.cs",
+    "native/runtime-start.cjs",
     "native/host.cjs",
     "native/runner.cjs",
     "native/tasks.cjs",
     "native/local-model.cjs",
+    "native/local-summary.cjs",
     "native/setup-local.cjs",
     "native/asr.cjs",
     "native/asr.py",

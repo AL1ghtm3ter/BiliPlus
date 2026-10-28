@@ -100,72 +100,38 @@ async function harness(settings = {}, html = fixture) {
     intervals: () => [...timers.values()].filter((t) => t.repeat).length,
   };
 }
-const host = (h) =>
-  h.document.querySelector('[data-bcx-widget="split-control"]');
-const button = (h) => host(h)?.shadowRoot.querySelector("button");
 
-test("native split icon is a solid two-column symbol with a narrow gap and inherited highlight color", async () => {
-  for (const [layout, highlighted] of [
-    [{}, false],
-    [{ split: true, splitActive: true }, true],
-    [{ split: true, splitActive: true, highlightControlButton: false }, false],
-  ]) {
-    const h = await harness({ layout }),
-      entry = button(h),
-      icon = entry.querySelector("svg"),
-      panes = [...icon.querySelectorAll("rect")];
-    assert.equal(
-      entry.textContent,
-      "",
-      "the native control has no visible label",
-    );
-    assert.equal(icon.getAttribute("viewBox"), "0 0 24 24");
-    assert.equal(icon.getAttribute("fill"), "currentColor");
-    assert.equal(icon.getAttribute("aria-hidden"), "true");
-    assert.equal(panes.length, 2, "two solid panes replace the outlined frame");
-    assert.equal(icon.querySelector("path"), null);
-    assert.equal(icon.querySelector("[stroke]"), null);
-    const [first, second] = panes.map((pane) =>
-      Object.fromEntries(
-        ["x", "y", "width", "height"].map((name) => [
-          name,
-          Number(pane.getAttribute(name)),
-        ]),
-      ),
-    );
-    assert(first.width > 0 && first.height > first.width);
-    assert.equal(first.y, second.y);
-    assert.equal(first.width, second.width);
-    assert.equal(first.height, second.height);
-    const gap = second.x - first.x - first.width;
-    assert(gap > 0 && gap < first.width / 2, "the pane gap stays narrow");
-    assert.equal(entry.getAttribute("data-highlight"), String(highlighted));
-    assert.equal(
-      entry.getAttribute("title"),
-      entry.getAttribute("aria-label"),
-      "the descriptive label remains in the native tooltip",
-    );
-    assert.equal(
-      host(h).previousElementSibling.className,
-      "bpx-player-ctrl-pip",
-      "the icon remains after the native picture-in-picture control",
-    );
-  }
-});
-
-test("default playback shows a small native split entry while leaving video and comments in their original layout", async () => {
-  const h = await harness(),
-    control = host(h);
-  assert(control, "default split=false must still expose the playback entry");
-  assert.equal(
-    control.parentElement.className,
-    "bpx-player-control-bottom-right",
+const legacyLayout = {
+  split: true,
+  splitActive: true,
+  sideWidth: 52,
+  sideWidthPx: 720,
+  activeTab: "ai",
+  highlightControlButton: true,
+};
+const absentSplit = (h) => {
+  assert(
+    h.document.querySelector('[data-bcx-widget="split-control"]') === null,
   );
-  assert.equal(button(h).getAttribute("aria-pressed"), "false");
-  assert.equal(h.document.querySelector("[data-bcx-split]"), null);
+  assert(h.document.querySelector("[data-bcx-split]") === null);
+  assert(h.document.querySelector("[data-bcx-tabs]") === null);
+  assert(h.document.querySelector("[data-bcx-pane]") === null);
+};
+test("default playback has no split control or layout and leaves native player, comments and controls intact", async () => {
+  const h = await harness();
+  absentSplit(h);
+  assert.equal(
+    h.document.querySelector("#playerWrap").parentElement.className,
+    "left-container",
+  );
   assert.equal(
     h.document.querySelector("#commentapp").parentElement.className,
     "left-container",
+  );
+  assert.equal(
+    h.document.querySelector(".bpx-player-control-bottom-right").children
+      .length,
+    1,
   );
   assert.equal(
     h.document.documentElement.hasAttribute("data-bcx-wide-layout"),
@@ -174,121 +140,173 @@ test("default playback shows a small native split entry while leaving video and 
   assert.equal(
     h.intervals(),
     1,
-    "inactive entry must not add a permanent polling interval",
+    "disabled right comments adds no observer or polling interval",
   );
 });
-
-test("one click from defaults enables split and a second click restores video and comments without removing the entry", async () => {
-  const h = await harness(),
-    player = h.document.querySelector("#playerWrap"),
-    comments = h.document.querySelector("#commentapp"),
-    parent = player.parentElement;
-  let nativeClicks = 0;
-  player
-    .querySelector(".bpx-player-control-bottom-right")
-    .addEventListener("click", () => nativeClicks++);
-  assert(button(h), "split entry should be ready");
-  button(h).click();
-  await settle();
-  assert.equal(
-    nativeClicks,
-    0,
-    "the split action must not trigger native player click actions",
-  );
-  assert.equal(h.state.settings().layout.split, true);
-  assert.equal(h.state.settings().layout.splitActive, true);
-  assert.equal(player.parentElement.getAttribute("data-bcx-left"), "1");
-  assert(comments.closest('[data-bcx-pane="comments"]'));
-  assert.equal(button(h).getAttribute("aria-pressed"), "true");
-  h.advance(600);
-  assert.equal(h.writes.length, 1);
-  assert.equal(h.writes[0].biliSettings.layout.split, true);
-  button(h).click();
-  await settle();
-  assert.equal(h.document.querySelector("[data-bcx-split]"), null);
-  assert.equal(player.parentElement, parent);
-  assert.equal(comments.parentElement, parent);
-  assert.equal(button(h).getAttribute("aria-pressed"), "false");
-  assert.equal(
-    h.document.querySelectorAll('[data-bcx-widget="split-control"]').length,
-    1,
-  );
-  h.advance(6000);
-  assert.equal(h.document.querySelector("[data-bcx-split]"), null);
-});
-
-test("an old saved split=false and splitActive=false state opens with one entry click and saves both choices", async () => {
-  const h = await harness({ layout: { split: false, splitActive: false } });
-  assert(button(h));
-  button(h).click();
-  await settle();
-  h.advance(600);
-  assert.equal(h.state.settings().layout.split, true);
-  assert.equal(h.state.settings().layout.splitActive, true);
-  assert(h.document.querySelector("[data-bcx-split]"));
-  assert.equal(h.writes.length, 1);
-  assert.equal(h.writes[0].biliSettings.layout.splitActive, true);
-});
-
-test("a late or replaced native player control bar receives one reusable entry even while split is disabled", async () => {
-  const h = await harness({}, fixture.replace(barMarkup, ""));
-  assert.equal(host(h), null);
+test("legacy split=true settings cannot create controls or move native nodes even after page mutations and restarts", async () => {
+  const h = await harness({ layout: legacyLayout });
+  absentSplit(h);
   const player = h.document.querySelector("#playerWrap");
   player.insertAdjacentHTML("beforeend", barMarkup);
   await settle();
-  assert(button(h), "late native controls must gain the entry");
-  const original = host(h),
-    oldBar = original.parentElement,
-    newBar = oldBar.cloneNode(true);
-  newBar.querySelector("[data-bcx-widget]")?.remove();
-  oldBar.replaceWith(newBar);
+  h.advance(6000);
+  h.state.patch("player.step", 0.5);
   await settle();
-  assert.equal(host(h), original);
-  assert.equal(original.parentElement, newBar);
+  absentSplit(h);
+  assert.equal(player.parentElement.className, "left-container");
   assert.equal(
-    h.document.querySelectorAll('[data-bcx-widget="split-control"]').length,
-    1,
+    h.document.querySelector("#commentapp").parentElement.className,
+    "left-container",
+  );
+  assert.equal(h.intervals(), 1);
+});
+test("normalization and old backup restore discard retired split fields and favorites while keeping independent layout choices", () => {
+  const C = require("../extension/common/config.js"),
+    fields = require("../extension/common/settings-fields.js");
+  const old = {
+    layout: { ...legacyLayout, rightComments: true, commentWidthPx: 515 },
+    home: { minimal: true },
+    appearance: {
+      favoriteFeatureIds: [
+        "layout.split",
+        "layout.rightComments",
+        "home.minimal",
+      ],
+    },
+  };
+  const restored = C.restore({
+    format: "bilibili-codex-settings",
+    version: 2,
+    settings: old,
+  });
+  assert.deepEqual(restored.layout, {
+    rightComments: true,
+    commentWidthPx: 515,
+  });
+  assert.equal(restored.home.minimal, true);
+  assert.deepEqual(restored.appearance.favoriteFeatureIds, [
+    "layout.rightComments",
+    "home.minimal",
+  ]);
+  assert.deepEqual(C.backup(restored).settings.layout, restored.layout);
+  for (const key of Object.keys(legacyLayout)) {
+    C.set(restored, "layout." + key, legacyLayout[key]);
+    assert.equal(
+      Object.hasOwn(restored.layout, key),
+      false,
+      key + " cannot be reintroduced through setters",
+    );
+  }
+  assert.equal(
+    C.CATALOG.flatMap((group) => group.items).some(
+      (item) => item[0] === "layout.split",
+    ),
+    false,
+  );
+  const keys = Object.values(fields)
+    .flat()
+    .map((field) => field.key);
+  for (const key of Object.keys(legacyLayout))
+    assert.equal(keys.includes("layout." + key), false);
+  assert(keys.includes("layout.commentWidthPx"));
+  assert.equal(
+    C.normalize({ layout: { commentWidthPx: 1 } }).layout.commentWidthPx,
+    300,
+  );
+  assert.equal(
+    C.normalize({ layout: { commentWidthPx: 1000 } }).layout.commentWidthPx,
+    800,
   );
 });
-
-test("leaving playback cleans the entry and stale callbacks cannot reattach or activate split", async () => {
-  const h = await harness(),
-    stale = button(h);
-  assert(stale);
+test("old backups can still independently enable right comments without split controls, tabs or unrelated sidebar moves", async () => {
+  const h = await harness({
+      layout: { ...legacyLayout, rightComments: true, commentWidthPx: 515 },
+    }),
+    comments = h.document.querySelector("#commentapp"),
+    player = h.document.querySelector("#playerWrap");
+  absentSplit(h);
+  assert(comments.closest("[data-bcx-right-comments]"));
+  assert.equal(
+    h.document
+      .querySelector("[data-bcx-right-comments]")
+      .querySelectorAll("[role=tab]").length,
+    0,
+  );
+  assert.equal(
+    h.document
+      .querySelector("[data-bcx-comment-column]")
+      .getAttribute("aria-label"),
+    "评论",
+  );
+  h.state.patch("layout.rightComments", false);
+  await settle();
+  assert.equal(h.document.querySelector("[data-bcx-right-comments]"), null);
+  assert.equal(comments.parentElement.className, "left-container");
+  assert.equal(player.nextElementSibling.id, "v_desc");
+  absentSplit(h);
+});
+test("late or replaced player control bars remain free of split controls before and after route changes", async () => {
+  const h = await harness(
+      { layout: legacyLayout },
+      fixture.replace(barMarkup, ""),
+    ),
+    player = h.document.querySelector("#playerWrap");
+  player.insertAdjacentHTML("beforeend", barMarkup);
+  await settle();
+  const bar = player.querySelector(".bpx-player-control-bottom-right");
+  bar.replaceWith(bar.cloneNode(true));
+  await settle();
+  absentSplit(h);
   h.location.pathname = "/";
   h.advance(1000);
   await settle();
-  assert.equal(host(h), null);
-  assert.equal(h.intervals(), 1);
-  stale.click();
-  h.advance(600);
-  await settle();
-  assert.equal(h.state.settings().layout.split, false);
+  absentSplit(h);
+  assert.equal(h.document.querySelector("[data-bcx-right-comments]"), null);
   assert.equal(h.writes.length, 0);
-  h.document
-    .querySelector("#playerWrap")
-    .insertAdjacentHTML("beforeend", barMarkup);
-  await settle();
-  assert.equal(host(h), null);
 });
 
-test("explicit settings disable restores an active layout while keeping the same default entry behavior", async () => {
-  const h = await harness({
-    layout: { split: true, splitActive: true, highlightControlButton: false },
+for (const railClass of ["right-container", "playlist-container--right"])
+  test(`right comments keeps the subtitle assistant and native ${railClass} visible across restarts`, async () => {
+    const html = fixture.replace(
+        '<aside class="right-container"></aside>',
+        `<aside class="${railClass}"><div class="up-panel-container">UP</div><div id="bili-codex-root">字幕助手</div><div id="danmukuBox">弹幕</div></aside>`,
+      ),
+      h = await harness({ layout: { rightComments: true } }, html),
+      panel = h.document.querySelector("#bili-codex-root"),
+      rail = panel.parentElement;
+    function assertVisible() {
+      const ancestors = [];
+      for (let node = panel; node; node = node.parentElement)
+        ancestors.push(node);
+      for (const style of h.document.querySelectorAll("style")) {
+        for (const rule of style.sheet.cssRules) {
+          if (!rule.selectorText || rule.style.display !== "none") continue;
+          for (const node of ancestors)
+            assert.equal(
+              node.matches(rule.selectorText),
+              false,
+              "right comments must not hide the assistant through " +
+                rule.selectorText,
+            );
+        }
+      }
+      assert.equal(panel.parentElement, rail);
+      assert.equal(panel.isConnected, true);
+      assert.equal(rail.querySelector("#danmukuBox").isConnected, true);
+    }
+    assertVisible();
+    h.state.patch("layout.commentWidthPx", 515);
+    await settle();
+    assertVisible();
+    h.state.patch("layout.rightComments", false);
+    await settle();
+    assertVisible();
+    assert.equal(
+      h.document.querySelector("#playerWrap").parentElement.className,
+      "left-container",
+    );
+    assert.equal(
+      h.document.querySelector("#commentapp").parentElement.className,
+      "left-container",
+    );
   });
-  assert(h.document.querySelector("[data-bcx-split]"));
-  assert.equal(
-    button(h).getAttribute("aria-pressed"),
-    "true",
-    "pressed semantics cannot depend on decorative highlight",
-  );
-  h.state.patch("layout.split", false);
-  await settle();
-  assert.equal(h.document.querySelector("[data-bcx-split]"), null);
-  assert.equal(
-    h.document.querySelector("#playerWrap").parentElement.className,
-    "left-container",
-  );
-  assert(button(h));
-  assert.equal(button(h).getAttribute("aria-pressed"), "false");
-});

@@ -4,7 +4,7 @@ const path = require("node:path");
 const crypto = require("node:crypto");
 const { spawn } = require("node:child_process");
 const tasks = require("./tasks.cjs");
-const VERSION = "3.0.1";
+const VERSION = "3.0.3";
 function text(value, limit) {
   return typeof value === "string" ? value.trim().slice(0, limit) : "";
 }
@@ -107,11 +107,14 @@ function validateResult(value, duration) {
     segments,
   };
 }
-function makePrompt(input, kind = "summary", taskData = {}) {
+function makePrompt(input, kind = "summary", taskData = {}, format = {}) {
   return (
     "请分析以下 B 站视频字幕，只输出符合 schema 的 JSON。\n" +
     (kind === "summary"
-      ? "任务：summary 用简体中文写 1 至 3 段连贯概要；keyPoints 给出 2 至 6 条重点；segments 按实际字幕时间划分主题，短视频 2 至 5 段，长视频最多 12 段。start/end 使用秒数，不能超出视频时长。\n"
+      ? "任务：summary 用简体中文写 1 至 3 段连贯概要；keyPoints 给出 2 至 6 条重点；" +
+        (format.chapterIndices
+          ? "segments 按主题给出 1 至 12 段。字幕每行是 [编号,起始秒,文本]；每段 startIndex 必须选择该主题第一句的真实字幕编号，编号按升序且不重复。时间由程序计算，仅输出 startIndex、title、summary。\n"
+          : "segments 按实际字幕时间划分主题，短视频 2 至 5 段，长视频最多 12 段。start/end 使用秒数，不能超出视频时长。\n")
       : tasks.instructions(kind, taskData) + "\n") +
     (kind === "summary" && taskData.prompt
       ? "用户对总结风格的要求（不改变仅依据字幕、不得调用工具的约束）：" +

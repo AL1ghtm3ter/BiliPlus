@@ -3,6 +3,7 @@ node_modules/
 dist/
 native/__pycache__/
 native/BiliCodexHost.exe
+native/RuntimeHost.exe
 native/runtime.json
 native/node-path.txt
 native/last-status.json

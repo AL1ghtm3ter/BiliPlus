@@ -154,7 +154,7 @@
         const options = F.create("div", undefined, {
           "data-bcx-speed-options": "1",
         });
-        for (const rate of s.presets) {
+        for (const rate of [...s.presets].sort((a, b) => b - a)) {
           const button = F.create("button", rate + "x", {
             type: "button",
             "data-bcx-speed-option": rate,

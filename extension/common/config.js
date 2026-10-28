@@ -58,14 +58,8 @@
       routeCheckIntervalMs: 750,
     },
     layout: {
-      split: false,
-      splitActive: true,
       rightComments: false,
-      sideWidth: 40,
-      sideWidthPx: 460,
       commentWidthPx: 420,
-      activeTab: "comments",
-      highlightControlButton: true,
     },
     filter: {
       enabled: false,
@@ -187,11 +181,6 @@
       title: "布局优化",
       items: [
         [
-          "layout.split",
-          "左右分屏",
-          "播放器与详情、评论、AI 助手分列，右侧可切换标签",
-        ],
-        [
           "layout.rightComments",
           "右侧评论",
           "把评论区移到播放器旁，关闭后还原",
@@ -305,24 +294,9 @@
     );
     out.home.previewDelay = clamp(out.home.previewDelay, 200, 3000);
     out.home.historyLimit = Math.round(clamp(out.home.historyLimit, 2, 12));
-    out.layout.sideWidth = clamp(out.layout.sideWidth, 28, 55);
-    out.layout.sideWidthPx = Math.round(
-      clamp(out.layout.sideWidthPx, 300, 800),
-    );
     out.layout.commentWidthPx = Math.round(
       clamp(out.layout.commentWidthPx, 300, 800),
     );
-    if (
-      ![
-        "detail",
-        "collection",
-        "comments",
-        "ai",
-        "danmaku",
-        "recommendations",
-      ].includes(out.layout.activeTab)
-    )
-      out.layout.activeTab = "comments";
     if (!["system", "light", "dark"].includes(out.appearance.theme))
       out.appearance.theme = "system";
     const featureKeys = new Set(

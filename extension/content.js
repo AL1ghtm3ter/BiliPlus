@@ -30,7 +30,7 @@
 <div data-pane="subtitles" class="subtitle-pane"><div class="subtitle-placeholder"><h4>视频字幕</h4><p>读取视频字幕，支持复制、导出和整理成文。无字幕时使用本机识别。</p></div><div class="subtitle-toolbar"><div class="actions"><button class="read primary" type="button">读取字幕</button><button class="polish" type="button">整理成文</button></div><div class="export-actions" hidden><select class="export-format" aria-label="导出字幕"><option value="">导出</option><option value="srt">SRT</option><option value="txt">TXT</option><option value="json">JSON</option></select><button class="follow-subtitle" type="button" hidden title="恢复字幕随播放定位">跟随播放</button></div></div><p class="transcript-meta"></p><div class="transcript"></div><section class="article-area" hidden><h3>润色文章</h3><button class="copy-article" type="button">复制文章</button><div class="article"></div></section></div>
 <div data-pane="chat" class="chat-pane" hidden><p class="hint">围绕视频内容提问，回答会引用字幕时间。</p><div class="chat-log" role="log" aria-live="polite"></div><form class="question-form"><label for="question">你的问题</label><textarea id="question" maxlength="6000" rows="3" placeholder="输入你想了解的问题…"></textarea><button class="ask primary" type="submit">发送</button></form></div>
 <div data-pane="ads" hidden><h4>广告识别</h4><p class="hint">识别视频中的口播推广与植入广告。可查看依据、跳转或保留片段。</p><button class="detect primary" type="button">识别广告</button><div class="ads-result"></div></div>
-<p class="footnote"><span class="engine-note">本地模型分析</span> · <span class="source-note">优先使用已有字幕</span></p>
+<p class="footnote"><span class="engine-note">无字幕时使用本机 Whisper 转写</span><span class="source-note"></span></p>
 </div></div><div class="panel-resizer" role="separator" tabindex="0" aria-label="调整助手高度" aria-orientation="horizontal" aria-valuemin="360" aria-valuemax="1600" aria-valuenow="600" title="上下拖动调整高度；方向键微调，双击恢复默认"><span></span></div></aside>`;
   const $ = (s) => shadow.querySelector(s),
     all = (s) => [...shadow.querySelectorAll(s)],
@@ -131,8 +131,20 @@
     updateBadge();
   }
   function updateBadge() {
-    $(".engine-note").textContent =
-      config().ai.provider === "codex" ? "Codex 分析" : "本地模型分析";
+    const reading =
+      selectedTab === "subtitles" &&
+      !article &&
+      !(busy && activeKind === "polish");
+    $(".engine-note").textContent = reading
+      ? transcript
+        ? transcript.source === "local-asr"
+          ? "本机 Whisper 转写"
+          : "B站已有字幕（未调用识别模型）"
+        : "无字幕时使用本机 Whisper 转写"
+      : config().ai.provider === "codex"
+        ? "文字分析：Codex（线上）"
+        : "文字分析：本机模型";
+    $(".source-note").hidden = reading;
     $(".connection-state").textContent = busy ? "处理中" : "已就绪";
     $(".pane-badge").textContent =
       busy && selectedTab === taskPane(activeKind)
@@ -152,8 +164,6 @@
                 : "广告片段";
   }
   function placement() {
-    const dock = globalThis.BiliFeatures?.context?.aiMount;
-    if (dock?.isConnected) return { target: dock, docked: true };
     if (document.querySelector(".bpx-player-ctrl-wide.bpx-state-entered")) {
       const anchor = document.querySelector("#danmukuBox");
       return anchor?.parentElement
@@ -270,22 +280,15 @@
       if (host.getAttribute("data-theme") !== theme)
         host.setAttribute("data-theme", theme);
     }
-    if (slot.docked) {
-      if (host.parentNode !== slot.target) slot.target.append(host);
-      if (!host.hasAttribute("data-docked"))
-        host.setAttribute("data-docked", "true");
-    } else {
-      if (slot.anchor?.parentElement === slot.target) {
-        if (host.previousElementSibling !== slot.anchor)
-          slot.anchor.after(host);
-      } else if (slot.target.firstElementChild !== host)
-        slot.target.prepend(host);
-      if (host.hasAttribute("data-docked")) host.removeAttribute("data-docked");
-    }
+    if (slot.anchor?.parentElement === slot.target) {
+      if (host.previousElementSibling !== slot.anchor) slot.anchor.after(host);
+    } else if (slot.target.firstElementChild !== host)
+      slot.target.prepend(host);
     sizePanel();
     if (videoKey !== key()) reset();
     watchVideo();
     markers();
+    updateBadge();
   }
   function reset() {
     stop();
@@ -314,7 +317,7 @@
     $(".subtitle-pane").removeAttribute("data-ready");
     $(".article-area").hidden = true;
     $(".ads-result").replaceChildren();
-    $(".source-note").textContent = "优先使用已有字幕";
+    $(".source-note").textContent = " · 优先使用已有字幕";
     result = null;
     transcript = null;
     $(".read").textContent = "读取字幕";
@@ -436,7 +439,7 @@
   }
   function chatMessage(role, text, references = []) {
     const block = create("div", undefined, { class: "chat-message " + role });
-    block.append(create("strong", role === "user" ? "你" : "Codex"));
+    block.append(create("strong", role === "user" ? "你" : "助手"));
     const body = create("div");
     paragraphs(body, text);
     block.append(body);
@@ -577,7 +580,7 @@
         create(
           "p",
           data.cacheMiss
-            ? "本机没有这段视频的广告缓存，本次未调用 Codex。"
+            ? "本机没有这段视频的广告缓存，本次未调用文字模型。"
             : "没有识别到明确广告片段。",
           { class: "hint" },
         ),
@@ -683,8 +686,8 @@
           if (message.source)
             $(".source-note").textContent =
               message.source === "local-asr"
-                ? "本次使用本机识别字幕。"
-                : "本次使用已有字幕。";
+                ? " · 字幕由本机 Whisper 转写"
+                : " · 使用 B站已有字幕";
         }
         if (message.type === "result") {
           completed = true;
@@ -1155,8 +1158,6 @@
   chrome.runtime.onMessage.addListener((message) => {
     if (message?.type === "open-panel") show();
   });
-  window.addEventListener("bili-codex-layout-change", mount);
-  window.addEventListener("bili-codex-layout-show", show);
   window.addEventListener("bili-codex-settings-change", mount);
   window.addEventListener(
     "load",

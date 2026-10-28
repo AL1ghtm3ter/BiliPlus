@@ -39,13 +39,21 @@ function Find-BiliPlusCodex {
   if ($command -and $command.Source) { return $command.Source }
   return $null
 }
-function Build-BiliPlusLauncher {
-  param([Parameter(Mandatory=$true)][string]$NativeRoot, [Parameter(Mandatory=$true)][string]$Destination)
+function Build-BiliPlusProgram {
+  param([Parameter(Mandatory=$true)][string]$Source, [Parameter(Mandatory=$true)][string]$Destination)
   $compiler = Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'
   if (-not (Test-Path -LiteralPath $compiler)) { $compiler = Join-Path $env:WINDIR 'Microsoft.NET\Framework\v4.0.30319\csc.exe' }
   if (-not (Test-Path -LiteralPath $compiler)) { throw '.NET Framework C# compiler was not found. No native host configuration was replaced.' }
-  & $compiler /nologo /target:winexe /optimize+ "/out:$Destination" (Join-Path $NativeRoot 'Launcher.cs')
+  & $compiler /nologo /target:winexe /optimize+ "/out:$Destination" $Source
   if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $Destination -PathType Leaf)) { throw 'Native host build failed. Existing configuration was not replaced.' }
+}
+function Build-BiliPlusLauncher {
+  param([Parameter(Mandatory=$true)][string]$NativeRoot, [Parameter(Mandatory=$true)][string]$Destination)
+  Build-BiliPlusProgram -Source (Join-Path $NativeRoot 'Launcher.cs') -Destination $Destination
+}
+function Build-BiliPlusRuntimeHost {
+  param([Parameter(Mandatory=$true)][string]$NativeRoot, [Parameter(Mandatory=$true)][string]$Destination)
+  Build-BiliPlusProgram -Source (Join-Path $NativeRoot 'RuntimeHost.cs') -Destination $Destination
 }
 function Invoke-BiliPlusModelSetup {
   param([Parameter(Mandatory=$true)][string]$NodePath, [Parameter(Mandatory=$true)][string]$PackageRoot)
@@ -62,6 +70,7 @@ function Install-BiliPlusBridge {
   $extensionId = (Get-Content -LiteralPath (Join-Path $packageRoot 'extension-id.txt') -Raw).Trim()
   if ($extensionId -notmatch '^[a-p]{32}$') { throw 'Invalid extension ID.' }
   if (-not (Test-Path -LiteralPath (Join-Path $nativeRoot 'Launcher.cs') -PathType Leaf)) { throw 'The package is incomplete: native/Launcher.cs is missing.' }
+  if (-not (Test-Path -LiteralPath (Join-Path $nativeRoot 'RuntimeHost.cs') -PathType Leaf)) { throw 'The package is incomplete: native/RuntimeHost.cs is missing.' }
   Write-Host '小电视助手 · BiliPlus：安装当前用户的本机桥接，无需管理员或 Codex 账号。'
   $nodePath = Resolve-BiliPlusNode -PackageRoot $packageRoot
   $runtimeFile = Assert-BiliPlusChildPath -Root $packageRoot -Path (Join-Path $nativeRoot 'runtime.json')
@@ -77,10 +86,15 @@ function Install-BiliPlusBridge {
   [void][IO.Directory]::CreateDirectory($buildRoot)
   $temporaryLauncher = Assert-BiliPlusChildPath -Root $packageRoot -Path (Join-Path $buildRoot ('BiliPlusHost-' + [Guid]::NewGuid().ToString('N') + '.exe'))
   $launcher = Assert-BiliPlusChildPath -Root $packageRoot -Path (Join-Path $nativeRoot 'BiliCodexHost.exe')
+  $temporaryRuntimeHost = Assert-BiliPlusChildPath -Root $packageRoot -Path (Join-Path $buildRoot ('BiliPlusRuntime-' + [Guid]::NewGuid().ToString('N') + '.exe'))
+  $runtimeHost = Assert-BiliPlusChildPath -Root $packageRoot -Path (Join-Path $nativeRoot 'RuntimeHost.exe')
   Build-BiliPlusLauncher -NativeRoot $nativeRoot -Destination $temporaryLauncher
+  Build-BiliPlusRuntimeHost -NativeRoot $nativeRoot -Destination $temporaryRuntimeHost
   # Recheck after a potentially long download; never overwrite a newly claimed host.
   Assert-BiliPlusHostOwnership -NativeManifest $nativeManifest
+  Copy-Item -LiteralPath $temporaryRuntimeHost -Destination $runtimeHost -Force
   Copy-Item -LiteralPath $temporaryLauncher -Destination $launcher -Force
+  Remove-Item -LiteralPath $temporaryRuntimeHost
   Remove-Item -LiteralPath $temporaryLauncher
   $utf8 = New-Object Text.UTF8Encoding($false)
   [IO.File]::WriteAllText($runtimeFile, ($config | ConvertTo-Json), $utf8)

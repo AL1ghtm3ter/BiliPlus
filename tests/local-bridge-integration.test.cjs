@@ -32,6 +32,8 @@ function harness({
   modelReady = true,
   holdPull = false,
   ollamaMetrics = {},
+  subtitleBody = [{ from: 0, to: 5, content: "当前视频的合成中文字幕" }],
+  modelAnswer,
 } = {}) {
   const storage = { biliSettings: C.normalize({ ai }) },
     native = [],
@@ -85,13 +87,29 @@ function harness({
             },
           }),
         );
-      if (url.endsWith("/api/chat"))
+      if (url.endsWith("/api/chat")) {
+        const body = JSON.parse(options.body);
+        const indexed =
+          !!body.format?.properties?.segments?.items?.properties?.startIndex;
+        const answer = modelAnswer
+          ? modelAnswer(body)
+          : indexed
+            ? {
+                ...summary,
+                segments: summary.segments.map(({ title, summary }) => ({
+                  startIndex: 0,
+                  title,
+                  summary,
+                })),
+              }
+            : summary;
         return Response.json({
           done: true,
           done_reason: "stop",
-          message: { content: JSON.stringify(summary) },
+          message: { content: JSON.stringify(answer) },
           ...ollamaMetrics,
         });
+      }
       throw Error("Unexpected local mock URL");
     },
   };
@@ -131,6 +149,8 @@ function harness({
           ),
         };
       if (name === "./local-model.cjs") return local;
+      if (name === "./local-summary.cjs")
+        return require("../native/local-summary.cjs");
       if (name === "./tasks.cjs") return tasks;
       if (name === "./asr.cjs")
         return {
@@ -242,7 +262,7 @@ function harness({
     fetch: async (url) => {
       assert(String(url).startsWith("https://aisubtitle.hdslb.com/"));
       return Response.json({
-        body: [{ from: 0, to: 5, content: "当前视频的合成中文字幕" }],
+        body: subtitleBody,
       });
     },
   });
@@ -358,9 +378,105 @@ test("explicit codex selection traverses background/host without invoking local 
   assert(!r.error);
   assert.equal(r.result.meta.provider, "codex");
   assert.equal(r.result.result.summary, "显式 Codex 模拟总结");
+  assert.deepEqual(
+    r.result.result.segments,
+    summary.segments,
+    "explicit Codex keeps the established seconds protocol",
+  );
   assert.equal(h.native[0].sent[0].provider, "codex");
   assert.equal(h.codexCalls.length, 1);
   assert.equal(h.localCalls.filter((c) => c.type === "runLocal").length, 0);
+});
+test("local summary maps actual subtitle indices into safe chapter times when a source caption ends beyond duration", async () => {
+  const h = harness({
+    subtitleBody: [
+      { from: 0, to: 20, content: "第一主题" },
+      { from: 20, to: 64, content: "末条字幕比60秒视频长4秒" },
+    ],
+    modelAnswer: (body) =>
+      body.format?.properties?.segments?.items?.properties?.startIndex
+        ? {
+            ...summary,
+            segments: [
+              { startIndex: 1, title: "第二主题", summary: "末尾字幕内容" },
+              { startIndex: 0, title: "第一主题", summary: "开头内容" },
+            ],
+          }
+        : {
+            ...summary,
+            segments: [
+              {
+                start: 0,
+                end: 64,
+                title: "忠实照抄字幕结束时间",
+                summary: "源字幕的真实end超出视频4秒",
+              },
+            ],
+          },
+  });
+  const r = await h.request();
+  assert.equal(
+    r.error,
+    undefined,
+    "source subtitle timing drift must not invalidate an otherwise grounded local summary: " +
+      r.error?.error,
+  );
+  const sent = JSON.parse(
+    h.ollamaCalls.find(
+      (c) =>
+        c.url.endsWith("/api/chat") &&
+        JSON.parse(c.options.body).format.properties.segments,
+    ).options.body,
+  );
+  assert.deepEqual(
+    sent.format.properties.segments.items.properties.startIndex.enum,
+    [0, 1],
+  );
+  assert.equal(
+    sent.format.properties.segments.items.properties.start,
+    undefined,
+  );
+  assert.equal(sent.format.properties.segments.items.properties.end, undefined);
+  assert.deepEqual(
+    r.result.result.segments.map(({ start, end }) => ({ start, end })),
+    [
+      { start: 0, end: 20 },
+      { start: 20, end: 60 },
+    ],
+  );
+  assert.equal(r.result.meta.provider, "local");
+  assert.equal(h.codexCalls.length, 0);
+});
+test("invalid local chapter indices return an error without cache and a subsequent retry uses source excerpts", async () => {
+  let oversized = true;
+  const h = harness({
+    modelAnswer: () => ({
+      ...summary,
+      segments: oversized
+        ? [
+            { startIndex: 999, title: "甲", summary: "甲".repeat(1998) },
+            { startIndex: 0, title: "乙", summary: "乙".repeat(1997) },
+          ]
+        : [{ startIndex: 0, title: "有效主题", summary: "重试的正确结果" }],
+    }),
+  });
+  const failed = await h.request();
+  assert.match(failed.error?.error || "", /字幕编号无效/);
+  assert.equal(failed.result, undefined);
+  assert.equal(h.native[0].disconnected, true);
+  assert(!Object.keys(h.storage).some((key) => key.startsWith("ai:")));
+  oversized = false;
+  const retry = await h.request();
+  assert.equal(retry.error, undefined);
+  assert.match(
+    retry.result.result.segments[0].summary,
+    /原字幕摘录：当前视频的合成中文字幕/,
+  );
+  assert.deepEqual(
+    retry.result.result.segments.map(({ start, end }) => ({ start, end })),
+    [{ start: 0, end: 60 }],
+  );
+  assert.equal(h.localCalls.filter((c) => c.type === "runLocal").length, 4);
 });
 test("safe local timing metrics cross actual helper/host/framing into progress and result metadata", async () => {
   const h = harness({
@@ -414,6 +530,77 @@ test("AI caches cannot cross provider or local model selections", async () => {
   assert.equal(restored.result.meta.model, "qwen3:4b");
   assert.equal(restored.result.meta.cached, undefined);
   assert.equal(h.native.length, 4);
+});
+
+test("legacy local summary cache cannot replay instruction placeholders after a summary revision", async () => {
+  const h = harness();
+  await h.request();
+  const sent = h.native[0].sent[0],
+    key = Object.keys(h.storage).find((k) => k.startsWith("ai:summary:"));
+  const digest = crypto
+    .createHash("sha256")
+    .update(
+      JSON.stringify({
+        input: sent.input,
+        kind: "summary",
+        taskData: sent.taskData,
+        provider: "local",
+        model: "qwen3:4b",
+      }),
+    )
+    .digest("hex");
+  h.storage[key] = {
+    ...h.storage[key],
+    digest,
+    result: { ...summary, summary: "用简体中文写 1 至 3 段连贯概要" },
+  };
+  const r = await h.request();
+  assert.equal(r.result.meta.cached, undefined);
+  assert.equal(r.result.result.summary, summary.summary);
+  assert.equal(h.native.length, 2);
+});
+
+test("instruction-only local answers never become completed or cached results even after a bounded retry", async () => {
+  const h = harness({
+    modelAnswer: () => ({
+      summary: "用简体中文写 1 至 3 段连贯概要",
+      keyPoints: ["给出 2 至 6 条重点"],
+      segments: [{ startIndex: 0, title: "字符串", summary: "字符串" }],
+    }),
+  });
+  const r = await h.request();
+  assert.equal(r.result, undefined);
+  assert.match(r.error?.error || "", /占位|提示词|实际内容/);
+  assert(!Object.keys(h.storage).some((k) => k.startsWith("ai:")));
+  assert.equal(h.codexCalls.length, 0);
+  assert.equal(h.localCalls.filter((c) => c.type === "runLocal").length, 2);
+});
+
+test("a placeholder local answer is regenerated once locally and only the corrected content is cached", async () => {
+  let count = 0;
+  const h = harness({
+    modelAnswer: () =>
+      ++count === 1
+        ? {
+            summary: "用简体中文写 1 至 3 段连贯概要",
+            keyPoints: ["给出 2 至 6 条重点"],
+            segments: [{ startIndex: 0, title: "字符串", summary: "字符串" }],
+          }
+        : {
+            ...summary,
+            segments: [
+              { startIndex: 0, title: "具体主题", summary: "字幕中的实际内容" },
+            ],
+          },
+  });
+  const r = await h.request();
+  assert.equal(r.error, undefined);
+  assert.equal(r.result.result.summary, summary.summary);
+  assert.equal(count, 3);
+  assert.equal(h.codexCalls.length, 0);
+  const hit = await h.request();
+  assert.equal(hit.result.meta.cached, true);
+  assert.equal(count, 3);
 });
 for (const hash of ["#ai", "#backup"])
   test(`own options page ${hash} can check the chosen provider/model and prepare it`, async () => {

@@ -567,6 +567,10 @@ chrome.runtime.onConnect.addListener((port) => {
                   config.ai.provider === "local"
                     ? config.ai.localModel
                     : undefined,
+                localSummaryRevision:
+                  kind === "summary" && config.ai.provider === "local"
+                    ? 3
+                    : undefined,
               }),
             ),
           ),

@@ -117,6 +117,10 @@ function harness({
         child.killed = true;
       };
       child.unref = () => {};
+      child.stdin = new EventEmitter();
+      child.stdin.end = (value) => {
+        if (value === "cancel\n") child.killed = true;
+      };
       spawned.push({ binary, args, options, child });
       state.ready = true;
       return child;
@@ -204,7 +208,8 @@ test("prepare starts only a missing installed server with shell disabled and a c
   const result = await L.prepare({ onProgress: h.onProgress }, h.deps);
   assert.equal(result.runtimeReady, true);
   assert.equal(h.spawned.length, 1);
-  assert.deepEqual(h.spawned[0].args, ["serve"]);
+  assert(h.spawned[0].binary.endsWith("RuntimeHost.exe"));
+  assert.deepEqual(h.spawned[0].args, [h.runtime]);
   assert.equal(h.spawned[0].options.shell, false);
   assert.equal(h.spawned[0].options.windowsHide, true);
   assert.equal(h.spawned[0].options.env.OLLAMA_HOST, "127.0.0.1:11434");
@@ -303,6 +308,24 @@ test("long prompts select a larger bounded context while oversized prompts fail 
   await assert.rejects(
     L.runLocal({ ...fixture, prompt: "字".repeat(20000) }, blocked.deps),
     /输入过长.*没有截断字幕/,
+  );
+  assert.equal(blocked.calls.length, 0);
+});
+
+test("summary pass output budgets preserve the full prompt and reject unsupported budgets before I/O", async () => {
+  const h = harness();
+  await L.runLocal({ ...fixture, maxOutputTokens: 1024 }, h.deps);
+  const body = JSON.parse(
+    h.calls.find((c) => c.url.endsWith("/api/chat")).options.body,
+  );
+  assert.equal(body.messages[1].content, fixture.prompt);
+  assert.equal(body.options.num_predict, 1024);
+  assert.equal(body.options.temperature, 0.7);
+  assert.equal(body.options.top_p, 0.8);
+  const blocked = harness();
+  await assert.rejects(
+    L.runLocal({ ...fixture, maxOutputTokens: 8192 }, blocked.deps),
+    /输出长度/,
   );
   assert.equal(blocked.calls.length, 0);
 });
@@ -643,6 +666,10 @@ test("startup cancellation stops only the child this preparation started", async
       child.killed = true;
     };
     child.unref = () => {};
+    child.stdin = new EventEmitter();
+    child.stdin.end = (value) => {
+      if (value === "cancel\n") child.killed = true;
+    };
     h.spawned.push({ args, child });
     return child;
   };

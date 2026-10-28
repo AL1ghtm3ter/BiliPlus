@@ -21,6 +21,10 @@ function ps(body, options = {}) {
   fs.mkdirSync(path.join(pkg, "native"), { recursive: true });
   fs.writeFileSync(path.join(pkg, "extension-id.txt"), "a".repeat(32));
   fs.writeFileSync(path.join(pkg, "native/Launcher.cs"), "fixture source");
+  fs.writeFileSync(
+    path.join(pkg, "native/RuntimeHost.cs"),
+    "fixture runtime source",
+  );
   const info = {
     // Exercise valid path aliases independently of Join-Path's normalization,
     // which differs between Windows PowerShell/.NET builds on local and CI.
@@ -35,7 +39,11 @@ function ps(body, options = {}) {
   const header = `$ErrorActionPreference='Stop'\n[Console]::OutputEncoding=New-Object Text.UTF8Encoding($false)\n$data=Get-Content -LiteralPath $env:BILIPLUS_SETUP_TEST_DATA -Raw -Encoding UTF8 | ConvertFrom-Json\n. $data.installerPath\nfunction Assert-Test { param($Condition,[string]$Message) if(-not $Condition){throw $Message} }\nfunction Get-BiliPlusHostRegistrations { return @() }\nfunction Register-BiliPlusNativeHost { param($NativeManifest) $script:registered=$NativeManifest }\nfunction Resolve-BiliPlusNode { param($PackageRoot) return $data.nodePath }\nfunction Build-BiliPlusLauncher { param($NativeRoot,$Destination) [IO.File]::WriteAllText($Destination,'fixture launcher') }\nfunction Find-BiliPlusCodex { param($Previous) return $null }\nfunction Invoke-BiliPlusModelSetup { param($NodePath,$PackageRoot) $script:modelCalls++ }\n$script:modelCalls=0\n`;
   fs.writeFileSync(
     path.join(base, "test.ps1"),
-    "\ufeff" + header + body + "\nWrite-Output 'QA_SETUP_PASS'\n",
+    "\ufeff" +
+      header +
+      "function Build-BiliPlusRuntimeHost { param($NativeRoot,$Destination) [IO.File]::WriteAllText($Destination,'fixture runtime host') }\n" +
+      body +
+      "\nWrite-Output 'QA_SETUP_PASS'\n",
   );
   let result;
   try {
@@ -131,7 +139,7 @@ test(
   { skip: !psAvailable },
   () => {
     ps(
-      `$optional=Join-Path $data.packageRoot '中文可选-codex.exe';[IO.File]::WriteAllText($optional,'not executed')\n[IO.File]::WriteAllText((Join-Path $data.packageRoot 'native/runtime.json'),(@{codexPath=$optional;codexBinRoot=$data.packageRoot}|ConvertTo-Json))\nRemove-Item Function:Find-BiliPlusCodex\n# Restore the real optional path discovery without invoking a login command.\n. $data.installerPath\nfunction Get-BiliPlusHostRegistrations{return @()}\nfunction Register-BiliPlusNativeHost{param($NativeManifest)$script:registered=$NativeManifest}\nfunction Resolve-BiliPlusNode{param($PackageRoot)return $data.nodePath}\nfunction Build-BiliPlusLauncher{param($NativeRoot,$Destination)[IO.File]::WriteAllText($Destination,'fixture launcher')}\nfunction Invoke-BiliPlusModelSetup{param($NodePath,$PackageRoot)$script:modelCalls++}\nInstall-BiliPlusBridge -PackageRoot $data.packageRoot\n$config=Get-Content -LiteralPath (Join-Path $data.packageRoot 'native/runtime.json') -Raw -Encoding UTF8|ConvertFrom-Json\nAssert-Test ($script:modelCalls -eq 1) 'first install did not prepare model'\nAssert-Test ($config.provider -eq 'local' -and $config.codexPath -eq $optional) 'optional Codex configuration lost'`,
+      `$optional=Join-Path $data.packageRoot '中文可选-codex.exe';[IO.File]::WriteAllText($optional,'not executed')\n[IO.File]::WriteAllText((Join-Path $data.packageRoot 'native/runtime.json'),(@{codexPath=$optional;codexBinRoot=$data.packageRoot}|ConvertTo-Json))\nRemove-Item Function:Find-BiliPlusCodex\n# Restore the real optional path discovery without invoking a login command.\n. $data.installerPath\nfunction Get-BiliPlusHostRegistrations{return @()}\nfunction Register-BiliPlusNativeHost{param($NativeManifest)$script:registered=$NativeManifest}\nfunction Resolve-BiliPlusNode{param($PackageRoot)return $data.nodePath}\nfunction Build-BiliPlusLauncher{param($NativeRoot,$Destination)[IO.File]::WriteAllText($Destination,'fixture launcher')}\nfunction Build-BiliPlusRuntimeHost{param($NativeRoot,$Destination)[IO.File]::WriteAllText($Destination,'fixture runtime host')}\nfunction Invoke-BiliPlusModelSetup{param($NodePath,$PackageRoot)$script:modelCalls++}\nInstall-BiliPlusBridge -PackageRoot $data.packageRoot\n$config=Get-Content -LiteralPath (Join-Path $data.packageRoot 'native/runtime.json') -Raw -Encoding UTF8|ConvertFrom-Json\nAssert-Test ($script:modelCalls -eq 1) 'first install did not prepare model'\nAssert-Test ($config.provider -eq 'local' -and $config.codexPath -eq $optional) 'optional Codex configuration lost'`,
     );
   },
 );
@@ -276,5 +284,15 @@ function Find-BiliPlusSystemNode{return $data.nodePath}
 function Test-BiliPlusNodeRuntime{param($NodePath)return $false}
 $caught=$false;try{Resolve-BiliPlusNode -PackageRoot $data.packageRoot}catch{$caught=$_.Exception.Message -like '*18 or newer*'}
 Assert-Test $caught 'invalid system Node silently replaced'`);
+  },
+);
+
+test(
+  "runtime host build failure preserves existing service host and registration config",
+  { skip: !psAvailable },
+  () => {
+    ps(
+      `$runtime=Join-Path $data.packageRoot 'native/runtime.json';$launcher=Join-Path $data.packageRoot 'native/BiliCodexHost.exe';$hostFile=Join-Path $data.packageRoot 'native/RuntimeHost.exe'\n[IO.File]::WriteAllText($runtime,'{"provider":"local"}');[IO.File]::WriteAllText($launcher,'old launcher');[IO.File]::WriteAllText($hostFile,'old runtime host')\nfunction Build-BiliPlusRuntimeHost{param($NativeRoot,$Destination)throw 'QA runtime host build failed'}\n$caught=$false;try{Install-BiliPlusBridge -PackageRoot $data.packageRoot -SkipModelSetup}catch{$caught=$true}\nAssert-Test $caught 'runtime host build failure was hidden'\nAssert-Test ([IO.File]::ReadAllText($runtime) -eq '{"provider":"local"}') 'runtime config changed'\nAssert-Test ([IO.File]::ReadAllText($launcher) -eq 'old launcher') 'launcher changed'\nAssert-Test ([IO.File]::ReadAllText($hostFile) -eq 'old runtime host') 'runtime host changed'`,
+    );
   },
 );

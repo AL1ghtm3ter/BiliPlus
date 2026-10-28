@@ -7,10 +7,10 @@ const {
   runCodex,
   inputHash,
   makePrompt,
-  validateResult,
 } = require("./runner.cjs");
 const asr = require("./asr.cjs");
 const localModel = require("./local-model.cjs");
+const localSummary = require("./local-summary.cjs");
 const tasks = require("./tasks.cjs");
 const MAX = 1024 * 1024;
 function encode(message) {
@@ -161,25 +161,42 @@ function start(
             : {
                 result: await (async () => {
                   const taskData = tasks.prepare(kind, message.taskData);
-                  const result = await localModel.runLocal({
-                    input: video,
-                    kind,
-                    taskData,
-                    model: message.model || localModel.DEFAULT_MODEL,
+                  let summaryPhase = "";
+                  const onProgress = (progress) => {
+                    if (
+                      ["local-overview", "local-timeline"].includes(
+                        progress.stage,
+                      )
+                    )
+                      summaryPhase = progress.status;
+                    if (summaryPhase && progress.stage === "local-generating")
+                      progress = { ...progress, status: summaryPhase };
+                    if (progress.stage === "local-complete")
+                      localMetrics = progress.metrics;
+                    send({ id, type: "progress", ...progress });
+                  };
+                  const generate = (request) =>
+                    localModel.runLocal({
+                      input: video,
+                      kind,
+                      taskData,
+                      model: message.model || localModel.DEFAULT_MODEL,
+                      ...request,
+                      signal: controller.signal,
+                      onProgress,
+                    });
+                  if (kind === "summary")
+                    return localSummary.run(video, taskData, generate, {
+                      signal: controller.signal,
+                      onProgress,
+                    });
+                  const result = await generate({
                     prompt: makePrompt(video, kind, taskData),
                     schema: JSON.parse(
                       fs.readFileSync(tasks.schemaFile(kind), "utf8"),
                     ),
-                    signal: controller.signal,
-                    onProgress: (progress) => {
-                      if (progress.stage === "local-complete")
-                        localMetrics = progress.metrics;
-                      send({ id, type: "progress", ...progress });
-                    },
                   });
-                  return kind === "summary"
-                    ? validateResult(result, video.duration)
-                    : tasks.validate(kind, result, video.duration);
+                  return tasks.validate(kind, result, video.duration);
                 })(),
               };
       const { result, usage } = output;
@@ -195,6 +212,14 @@ function start(
         model:
           provider === "local"
             ? message.model || localModel.DEFAULT_MODEL
+            : undefined,
+        chapterTiming:
+          kind === "summary" && provider === "local"
+            ? "subtitle-indices"
+            : undefined,
+        localSummaryMethod:
+          kind === "summary" && provider === "local"
+            ? "separate-overview-timeline"
             : undefined,
       };
       diagnostics({

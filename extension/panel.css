@@ -678,14 +678,6 @@ textarea::placeholder {
 :host([data-collapsed]) .collapse svg {
   transform: rotate(180deg);
 }
-:host([data-docked]) aside {
-  height: var(--bcx-panel-height, 600px);
-  min-height: 360px;
-}
-:host([data-docked][data-collapsed]) aside {
-  height: 48px;
-  min-height: 48px;
-}
 :host([data-theme="dark"]) {
   --ink: #e5e9ef;
   --secondary: #b4bdcb;

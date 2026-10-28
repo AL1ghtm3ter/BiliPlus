@@ -126,10 +126,26 @@ async function harness(settings = {}, initialDuration = 200) {
   };
 }
 const speed = (h) => h.document.querySelector('[data-bcx-widget="speed"]');
-const pane = (h, name) =>
-  h.document.querySelector('[data-bcx-pane="' + name + '"]');
 const separator = (h) =>
-  h.document.querySelector('[data-bcx-split]>[role="separator"]');
+  h.document.querySelector('[data-bcx-right-comments]>[role="separator"]');
+
+test("QA speed menu displays largest rate first without changing shortcut bindings or saved presets", async () => {
+  const h = await harness({
+    player: {
+      speedEnabled: true,
+      presets: [0.5, 1, 1.5, 2, 3, 4, 5],
+      presetShortcuts: ["Shift+Digit1"],
+      shortcutRates: [1.5],
+    },
+  });
+  const rates = [...speed(h).querySelectorAll("[data-bcx-speed-option]")].map(
+    (b) => Number(b.getAttribute("data-bcx-speed-option")),
+  );
+  assert.deepEqual(rates, [5, 4, 3, 2, 1.5, 1, 0.5]);
+  assert.equal(h.state.settings().player.presets[0], 0.5);
+  h.event(h.document, "keydown", { code: "Digit1", shiftKey: true });
+  assert.equal(h.document.querySelector("video").playbackRate, 1.5);
+});
 
 test("QA speed slider, every preset and custom shortcuts update the actual media and persisted selection", async () => {
   const h = await harness({
@@ -311,148 +327,153 @@ test("QA paused media metadata updates the fullscreen seek range before the firs
   );
 });
 
-test("QA six split tabs expose one pane each, preserve native nodes and persist the selected tab through index restarts", async () => {
-  const h = await harness({ layout: { split: true, splitActive: true } }),
-    names = [
-      "comments",
-      "detail",
-      "collection",
-      "danmaku",
-      "recommendations",
-      "ai",
-    ];
-  const originals = {
-    comments: pane(h, "comments").querySelector("#commentapp"),
-    collection: pane(h, "collection").querySelector(".action-list-container"),
-    danmaku: pane(h, "danmaku").querySelector("#danmukuBox"),
-    recommendations: pane(h, "recommendations").querySelector(
-      ".recommend-list-v1",
-    ),
-  };
-  assert.equal(h.document.querySelectorAll("[data-bcx-tab]").length, 6);
-  for (const name of names) {
-    h.document.querySelector('[data-bcx-tab="' + name + '"]').click();
-    await settle();
-    assert.equal(h.state.settings().layout.activeTab, name);
-    assert.equal(pane(h, name).hidden, false);
-    assert.equal(
-      [...h.document.querySelectorAll("[data-bcx-pane]")].filter(
-        (p) => !p.hidden,
-      ).length,
-      1,
-    );
-    assert.equal(
-      h.document
-        .querySelector('[data-bcx-tab="' + name + '"]')
-        .getAttribute("aria-selected"),
-      "true",
-    );
-  }
-  for (const [name, node] of Object.entries(originals))
-    assert(
-      pane(h, name).contains(node),
-      name + " keeps the original event-bearing native node",
-    );
-  assert.equal(h.state.aiMount, pane(h, "ai"));
-  h.advance(600);
-  await settle();
-  assert.equal(h.writes.at(-1).biliSettings.layout.activeTab, "ai");
-  h.state.patch("layout.split", false);
-  assert.equal(h.document.querySelector("[data-bcx-split]"), null);
-  for (const node of Object.values(originals)) assert(node.isConnected);
-  assert.equal(originals.comments.parentElement.className, "left-container");
-  assert.equal(originals.collection.parentElement.className, "right-container");
+test("QA right comments move only current player/comments while retaining native sidebar nodes and listeners", async () => {
+  const h = await harness({ layout: { rightComments: true } }),
+    comments = h.document.querySelector("#commentapp"),
+    side = h.document.querySelector(".right-container"),
+    originals = [...side.children];
+  assert(comments.closest("[data-bcx-comment-column]"));
+  assert.equal(
+    h.document.querySelectorAll("[data-bcx-tab],[data-bcx-pane]").length,
+    0,
+  );
+  assert(!h.document.querySelector('[data-bcx-widget="split-control"]'));
+  for (const node of originals) assert.equal(node.parentElement, side);
+  let received = 0;
+  comments.addEventListener("qa-comment-event", () => received++);
+  h.event(comments, "qa-comment-event");
+  assert.equal(received, 1);
+  h.state.patch("layout.rightComments", false);
+  assert.equal(comments.parentElement.className, "left-container");
+  for (const node of originals) assert.equal(node.parentElement, side);
+  h.event(comments, "qa-comment-event");
+  assert.equal(received, 2);
 });
-
-test("QA split width drag and keyboard enforce bounds, persist width and survive tab changes", async () => {
-  const h = await harness({ layout: { split: true, splitActive: true } });
-  let shell = h.document.querySelector("[data-bcx-split]");
+test("QA right-comment width drag and keyboard enforce bounds, persist and survive independent settings restarts", async () => {
+  const h = await harness({ layout: { rightComments: true } });
+  const shell = h.document.querySelector("[data-bcx-right-comments]");
   shell.getBoundingClientRect = () => ({ right: 1200 });
   h.event(separator(h), "pointerdown", { pointerId: 1 });
   h.event(h.window, "pointermove", { clientX: 570 });
   assert.equal(separator(h).getAttribute("aria-valuenow"), "630");
   h.event(h.window, "pointerup");
-  assert.equal(h.state.settings().layout.sideWidthPx, 630);
+  assert.equal(h.state.settings().layout.commentWidthPx, 630);
   h.event(separator(h), "keydown", { code: "ArrowLeft" });
-  assert.equal(h.state.settings().layout.sideWidthPx, 650);
-  h.document.querySelector('[data-bcx-tab="detail"]').click();
+  assert.equal(h.state.settings().layout.commentWidthPx, 650);
+  h.state.patch("player.step", 0.5);
   assert.match(
-    h.document.querySelector("[data-bcx-split]").style.gridTemplateColumns,
+    h.document.querySelector("[data-bcx-right-comments]").style
+      .gridTemplateColumns,
     /650px/,
   );
   for (let i = 0; i < 20; i++)
     h.event(separator(h), "keydown", { code: "ArrowLeft" });
-  assert.equal(h.state.settings().layout.sideWidthPx, 800);
+  assert.equal(h.state.settings().layout.commentWidthPx, 800);
   for (let i = 0; i < 30; i++)
     h.event(separator(h), "keydown", { code: "ArrowRight" });
-  assert.equal(h.state.settings().layout.sideWidthPx, 300);
+  assert.equal(h.state.settings().layout.commentWidthPx, 300);
   h.advance(600);
   await settle();
-  assert.equal(h.writes.at(-1).biliSettings.layout.sideWidthPx, 300);
+  assert.equal(h.writes.at(-1).biliSettings.layout.commentWidthPx, 300);
 });
-
-test("QA right-comments-only layout uses comment width and restores exact comments/player positions when disabled", async () => {
+test("QA disabling right comments restores exact native comments/player positions without a split entry", async () => {
   const h = await harness({
-      layout: { rightComments: true, split: false, commentWidthPx: 420 },
+      layout: { rightComments: true, commentWidthPx: 420 },
     }),
-    comments = pane(h, "comments").querySelector("#commentapp"),
+    comments = h.document.querySelector("#commentapp"),
     player = h.document.querySelector("#playerWrap");
-  assert.equal(h.document.querySelectorAll("[data-bcx-tab]").length, 1);
-  assert.equal(h.state.aiMount, null);
   assert.match(
-    h.document.querySelector("[data-bcx-split]").style.gridTemplateColumns,
+    h.document.querySelector("[data-bcx-right-comments]").style
+      .gridTemplateColumns,
     /420px/,
   );
   h.event(separator(h), "keydown", { code: "ArrowLeft" });
   assert.equal(h.state.settings().layout.commentWidthPx, 440);
-  assert.equal(h.state.settings().layout.sideWidthPx, 460);
   h.state.patch("layout.rightComments", false);
-  assert.equal(h.document.querySelector("[data-bcx-split]"), null);
+  assert(!h.document.querySelector("[data-bcx-right-comments]"));
   assert.equal(player.parentElement.className, "left-container");
   assert.equal(comments.parentElement.className, "left-container");
   assert.equal(player.nextElementSibling.id, "v_desc");
+  assert.equal(player.nextElementSibling.nextElementSibling, comments);
+  assert(!h.document.querySelector('[data-bcx-widget="split-control"]'));
 });
-
-test("QA late sidebar sections join their pane then route exit restores every original node", async () => {
-  const h = await harness({ layout: { split: true, splitActive: true } }),
-    rec = pane(h, "recommendations").querySelector(".recommend-list-v1");
-  rec.remove();
+test("QA late comments are adopted and route exit restores the replacement without resurrecting removed comments", async () => {
+  const h = await harness({ layout: { rightComments: true } }),
+    old = h.document.querySelector("#commentapp");
+  old.remove();
   const late = h.document.createElement("div");
-  late.className = "recommend-list-v1";
-  late.textContent = "新加载推荐";
-  h.document.querySelector(".right-container").append(late);
+  late.id = "commentapp";
+  late.textContent = "新加载评论";
+  h.document.querySelector(".left-container").append(late);
   h.advance(1200);
-  assert(pane(h, "recommendations").contains(late));
+  assert(late.closest("[data-bcx-comment-column]"));
   h.location.pathname = "/";
   h.advance(1000);
-  assert.equal(h.document.querySelector("[data-bcx-split]"), null);
-  assert.equal(
-    h.document.querySelector('[data-bcx-widget="split-control"]'),
-    null,
-  );
-  assert.equal(late.parentElement.className, "right-container");
+  assert(!h.document.querySelector("[data-bcx-right-comments]"));
+  assert.equal(late.parentElement.className, "left-container");
+  assert.equal(old.isConnected, false);
 });
-
-test("QA index tab restart does not revive a removed native recommendation section over its replacement", async () => {
-  const h = await harness({ layout: { split: true, splitActive: true } }),
-    old = pane(h, "recommendations").querySelector(".recommend-list-v1");
-  old.remove();
-  const replacement = h.document.createElement("div");
-  replacement.className = "recommend-list-v1";
-  replacement.textContent = "替换后的原生推荐";
-  h.document.querySelector(".right-container").append(replacement);
-  h.document.querySelector('[data-bcx-tab="detail"]').click();
+test("QA settings restart preserves a comment node replaced inside the owned sidebar before the DOM scan", async () => {
+  const h = await harness({ layout: { rightComments: true } }),
+    old = h.document.querySelector("#commentapp"),
+    replacement = h.document.createElement("div");
+  replacement.id = "commentapp";
+  replacement.textContent = "替换后的原生评论";
+  old.replaceWith(replacement);
+  h.state.patch("player.step", 0.5);
   await settle();
-  h.advance(1200);
   assert.equal(
     old.isConnected,
     false,
-    "settings restart must not resurrect a node removed by Bilibili",
+    "cleanup must not resurrect the removed comment node",
   );
-  assert(
-    pane(h, "recommendations").contains(replacement),
-    "new native section must be the visible recommendation source",
+  assert(replacement.closest("[data-bcx-comment-column]"));
+  h.state.patch("layout.rightComments", false);
+  assert.equal(replacement.parentElement.className, "left-container");
+  assert.equal(replacement.previousElementSibling.id, "v_desc");
+});
+test("QA disabling after the right-comments container is detached restores its intact native nodes", async () => {
+  const h = await harness({ layout: { rightComments: true } }),
+    player = h.document.querySelector("#playerWrap"),
+    comments = h.document.querySelector("#commentapp"),
+    shell = h.document.querySelector("[data-bcx-right-comments]");
+  shell.remove();
+  assert.equal(player.isConnected, false);
+  assert.equal(comments.isConnected, false);
+  h.state.patch("layout.rightComments", false);
+  assert.equal(player.parentElement.className, "left-container");
+  assert.equal(comments.parentElement.className, "left-container");
+  assert(player.isConnected && comments.isConnected);
+});
+
+test("QA external native replacements win over the detached right-comments container during cleanup", async () => {
+  const h = await harness({ layout: { rightComments: true } }),
+    oldPlayer = h.document.querySelector("#playerWrap"),
+    oldComments = h.document.querySelector("#commentapp"),
+    shell = h.document.querySelector("[data-bcx-right-comments]"),
+    replacementPlayer = h.document.createElement("div"),
+    replacementComments = h.document.createElement("div");
+  replacementPlayer.id = "playerWrap";
+  replacementComments.id = "commentapp";
+  replacementPlayer.append(h.document.createElement("video"));
+  shell.remove();
+  h.document
+    .querySelector(".left-container")
+    .append(replacementPlayer, replacementComments);
+  h.state.patch("layout.rightComments", false);
+  assert.equal(
+    oldPlayer.isConnected,
+    false,
+    "removed layout must not restore the obsolete player over a native replacement",
   );
+  assert.equal(
+    oldComments.isConnected,
+    false,
+    "removed layout must not restore obsolete comments over a native replacement",
+  );
+  assert(replacementPlayer.isConnected && replacementComments.isConnected);
+  assert.equal(h.document.querySelectorAll("#playerWrap").length, 1);
+  assert.equal(h.document.querySelectorAll("#commentapp").length, 1);
 });
 
 test("QA owned-move cleanup recovers an original node when only its extension container was detached", async () => {

@@ -133,7 +133,8 @@ async function harness(settings, html = fixture) {
 }
 
 const speedHost = (h) => h.document.querySelector('[data-bcx-widget="speed"]');
-const splitHost = (h) => h.document.querySelector("[data-bcx-split]");
+const commentsHost = (h) =>
+  h.document.querySelector("[data-bcx-right-comments]");
 const sameNode = (actual, expected, message = "DOM node should match") =>
   assert(actual === expected, message);
 function assertInMenu(h, player = h.document.querySelector("#playerWrap")) {
@@ -182,18 +183,21 @@ test("actual index startup remounts removed speed controls and preserves one liv
   );
 });
 
-test("index startup and settings restart keep speed controls inside the split player column", async () => {
+test("index startup and settings restart keep speed controls inside the right-comments player column", async () => {
   const h = await harness({
     player: { speedEnabled: true, speed: 2 },
-    layout: { split: true },
+    layout: { rightComments: true },
   });
   function assertColumn() {
     const player = h.document.querySelector("#playerWrap");
-    assert.equal(player.parentElement.getAttribute("data-bcx-left"), "1");
+    assert.equal(
+      player.parentElement.getAttribute("data-bcx-player-column"),
+      "1",
+    );
     assertInMenu(h, player);
   }
   assertColumn();
-  h.state.patch("layout.sideWidthPx", 500);
+  h.state.patch("layout.commentWidthPx", 500);
   assertColumn();
   const mountedMenu = h.document.querySelector(
       ".bpx-player-ctrl-playbackrate-menu",
@@ -213,10 +217,10 @@ test("index startup and settings restart keep speed controls inside the split pl
   );
   assert.equal(h.intervals(), 3);
   assert.equal(h.restarts(), 2);
-  const control = h.document.querySelector('[data-bcx-widget="split-control"]');
-  control.shadowRoot.querySelector("button").click();
+  assert(!h.document.querySelector('[data-bcx-widget="split-control"]'));
+  h.state.patch("layout.rightComments", false);
   const player = h.document.querySelector("#playerWrap");
-  assert.equal(splitHost(h), null);
+  assert.equal(commentsHost(h), null);
   assert.equal(player.parentElement.className, "left-container");
   assertInMenu(h, player);
   sameNode(
@@ -226,14 +230,14 @@ test("index startup and settings restart keep speed controls inside the split pl
 });
 
 for (const place of ["inside", "outside"])
-  test(`same-URL ${place} player reconstruction is adopted and the rebuilt player survives closing split`, async () => {
+  test(`same-URL ${place} player reconstruction is adopted and the rebuilt player survives closing right comments`, async () => {
     const h = await harness({
         player: { speedEnabled: true, speed: 2 },
-        layout: { split: true },
+        layout: { rightComments: true },
       }),
       old = h.document.querySelector("#playerWrap"),
       oldVideo = old.querySelector("video"),
-      shell = splitHost(h),
+      shell = commentsHost(h),
       originalParent = shell.parentElement,
       desc = h.document.querySelector("#v_desc"),
       next = old.cloneNode(true);
@@ -246,26 +250,29 @@ for (const place of ["inside", "outside"])
       desc.before(next);
     }
     h.advance(1200);
-    assert.equal(next.parentElement.getAttribute("data-bcx-left"), "1");
+    assert.equal(
+      next.parentElement.getAttribute("data-bcx-player-column"),
+      "1",
+    );
     assertInMenu(h, next);
     assert.equal(nextVideo.playbackRate, 2);
     assert.equal(oldVideo.playbackRate, 1.25);
-    assert(next.querySelector('[data-bcx-widget="split-control"]'));
+    assert(!next.querySelector('[data-bcx-widget="split-control"]'));
     h.advance(6000);
     sameNode(
-      splitHost(h),
+      commentsHost(h),
       shell,
       "reconstruction should not remount each scan",
     );
     assert.equal(h.restarts(), 1, "DOM recovery should not restart settings");
     assert.equal(h.intervals(), 3);
-    h.state.patch("layout.splitActive", false);
+    h.state.patch("layout.rightComments", false);
     assert(next.isConnected, "cleanup must preserve the rebuilt player");
     sameNode(next.parentElement, originalParent);
     assertInMenu(h, next);
     sameNode(next.nextElementSibling, desc);
     assert(!old.isConnected, "cleanup must not resurrect the obsolete player");
-    assert.equal(splitHost(h), null);
+    assert.equal(commentsHost(h), null);
     sameNode(
       h.document.querySelector("#commentapp").parentElement,
       originalParent,
@@ -280,10 +287,10 @@ for (const place of ["inside", "outside"])
 test("a settings restart before the DOM scan preserves a rebuilt player even when its original marker disappeared", async () => {
   const h = await harness({
       player: { speedEnabled: true, speed: 2 },
-      layout: { split: true },
+      layout: { rightComments: true },
     }),
     old = h.document.querySelector("#playerWrap"),
-    shell = splitHost(h),
+    shell = commentsHost(h),
     parent = shell.parentElement,
     next = old.cloneNode(true);
   for (const widget of next.querySelectorAll("[data-bcx-widget]"))
@@ -292,7 +299,7 @@ test("a settings restart before the DOM scan preserves a rebuilt player even whe
   old.replaceWith(next);
   for (const node of [...parent.childNodes])
     if (node.nodeType === 8) node.remove();
-  h.state.patch("layout.splitActive", false);
+  h.state.patch("layout.rightComments", false);
   assert(
     next.isConnected,
     "cleanup before the scan must preserve the new player",

@@ -25,7 +25,6 @@
     commentIpDiagnostics: { records: 0, painted: 0, recoveries: 0, error: "" },
     details: new Map(),
     history: { count: 0, index: 0 },
-    aiMount: null,
     currentVideoKey: "",
     settings: () => settings,
     patch: (key, value) => {
