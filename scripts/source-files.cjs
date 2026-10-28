@@ -63,6 +63,7 @@ function sourceFiles(root) {
     "package.json",
     "package-lock.json",
     ".gitignore",
+    ".gitattributes",
     "extension-id.txt",
     "安装本机桥接.ps1",
     "安装本机转写.ps1",

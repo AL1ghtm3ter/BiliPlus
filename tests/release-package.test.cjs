@@ -21,6 +21,7 @@ test("public source tree excludes generated host state, historical captures and 
   }
   for (const name of [
     "LICENSE",
+    ".gitattributes",
     ".github/workflows/ci.yml",
     "native/setup-local.cjs",
     "scripts/bootstrap-node.ps1",
