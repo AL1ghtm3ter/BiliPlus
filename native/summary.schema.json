@@ -1,0 +1,20 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["summary", "keyPoints", "segments"],
+  "properties": {
+    "summary": {"type": "string"},
+    "keyPoints": {"type": "array", "items": {"type": "string"}},
+    "segments": {
+      "type": "array",
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["start", "end", "title", "summary"],
+        "properties": {
+          "start": {"type": "number"}, "end": {"type": "number"},
+          "title": {"type": "string"}, "summary": {"type": "string"}
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,49 @@
+name: Source checks
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: source-checks-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  portable-source:
+    name: Node 24 simulated integration (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - name: Check out source without persistent credentials
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Set up Node.js 24
+        uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          package-manager-cache: false
+      - name: Verify portable source has no installed native runtime
+        run: node -e "const fs=require('node:fs'); for(const p of ['.runtime','native/BiliCodexHost.exe','native/runtime.json','native/node-path.txt','native/local.bilibili_codex.json','native/last-status.json']) if(fs.existsSync(p)) throw Error('Machine-specific state must not enter CI checkout — '+p);"
+      - name: Install locked development dependencies
+        run: npm ci
+      - name: Check syntax and manifest resources
+        run: npm run check
+      - name: Check formatting
+        run: npm run format:check
+      - name: Run unit and simulated integration tests
+        run: npm test
+      - name: Build readable unpacked extension
+        run: npm run build
+      # No model weights, Ollama, Codex, ASR environment or browser profile are
+      # installed in this workflow. Native-executable checks deliberately skip
+      # in a clean source checkout. A green job does not certify a real Bilibili
+      # page, model quality, hardware performance or native installer execution.
