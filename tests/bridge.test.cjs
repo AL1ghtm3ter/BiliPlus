@@ -415,10 +415,16 @@ function event() {
     fire: (...a) => fns.map((f) => f(...a)),
   };
 }
+function deferred() {
+  let resolve;
+  const promise = new Promise((done) => (resolve = done));
+  return { promise, resolve };
+}
 function background() {
   const storage = {},
     connections = [],
-    fetches = [];
+    fetches = [],
+    nativeRequest = deferred();
   let onConnect;
   const id = fs
     .readFileSync(path.join(root, "extension-id.txt"), "utf8")
@@ -435,6 +441,7 @@ function background() {
           onDisconnect: event(),
           postMessage: (m) => {
             p.sent = m;
+            nativeRequest.resolve(p);
           },
           disconnect: () => {
             p.disconnected = true;
@@ -507,6 +514,7 @@ function background() {
     messages,
     context,
     chrome,
+    nativeRequestReady: nativeRequest.promise,
   };
 }
 
@@ -656,31 +664,78 @@ test("extension pipeline forwards only current B站 transcript then caches retur
   assert.equal(app.connections.length, 1);
   assert.equal(app.messages.at(-1).meta.cached, true);
 });
-test("extension refuses cross-site/subframe requests and cancellation stops the native port", async () => {
-  const bad = background();
-  bad.port.sender.url = "https://example.test/video/BV1ph4y1c7kp/";
-  bad.onConnect(bad.port);
-  assert(bad.port.disconnected);
-  assert.equal(bad.connections.length, 0);
-  const app = background();
-  app.onConnect(app.port);
-  const pending = Promise.all(
-    app.port.onMessage.fire({
-      id: "one",
-      type: "summarize",
-      snapshot: {
-        ...fixture,
-        tracks: [{ subtitle_url: "https://aisubtitle.hdslb.com/a" }],
+test(
+  "extension refuses cross-site/subframe requests and cancellation stops the native port",
+  { timeout: 5000 },
+  async () => {
+    for (const sender of [
+      { url: "https://example.test/video/BV1ph4y1c7kp/" },
+      { frameId: 1 },
+    ]) {
+      const bad = background();
+      Object.assign(bad.port.sender, sender);
+      bad.onConnect(bad.port);
+      assert(bad.port.disconnected);
+      assert.equal(bad.connections.length, 0);
+    }
+    const app = background();
+    const digestStarted = deferred(),
+      releaseDigest = deferred();
+    const actualCrypto = app.context.crypto;
+    app.context.crypto = {
+      randomUUID: () => actualCrypto.randomUUID(),
+      subtle: {
+        digest: async (...args) => {
+          digestStarted.resolve();
+          await releaseDigest.promise;
+          return actualCrypto.subtle.digest(...args);
+        },
       },
-    }),
-  );
-  for (let i = 0; i < 30 && !app.connections.length; i++)
-    await new Promise(setImmediate);
-  await Promise.all(app.port.onMessage.fire({ type: "cancel" }));
-  await pending;
-  assert(app.connections[0].disconnected);
-  assert.equal(app.messages.at(-1).type, "cancelled");
-});
+    };
+    app.onConnect(app.port);
+    const pending = Promise.all(
+      app.port.onMessage.fire({
+        id: "one",
+        type: "summarize",
+        snapshot: {
+          ...fixture,
+          tracks: [{ subtitle_url: "https://aisubtitle.hdslb.com/a" }],
+        },
+      }),
+    );
+    const endedBeforeNativeRequest = pending.then(() => {
+      throw Error(
+        "Summary pipeline ended before sending a native request: " +
+          JSON.stringify(app.messages),
+      );
+    });
+    try {
+      // The real digest uses a worker pool and can outlive any number of event-loop
+      // turns. Hold it explicitly so readiness cannot be inferred from turn count.
+      await Promise.race([digestStarted.promise, endedBeforeNativeRequest]);
+      assert.equal(app.connections.length, 0);
+      releaseDigest.resolve();
+      const native = await Promise.race([
+        app.nativeRequestReady,
+        endedBeforeNativeRequest,
+      ]);
+      assert.equal(app.connections.length, 1);
+      assert.equal(native, app.connections[0]);
+      assert.equal(native.sent.type, "summarize");
+      assert.equal(native.sent.input.bvid, fixture.bvid);
+      await Promise.all(app.port.onMessage.fire({ type: "cancel" }));
+      await pending;
+      assert(native.disconnected);
+      assert.equal(app.messages.at(-1).type, "cancelled");
+      assert(!app.messages.some((message) => message.type === "result"));
+      assert(!Object.keys(app.storage).some((key) => key.startsWith("ai:")));
+    } finally {
+      releaseDigest.resolve();
+      await Promise.all(app.port.onMessage.fire({ type: "cancel" }));
+      await pending;
+    }
+  },
+);
 test("new manifest is isolated and requests no OpenCode or localhost permissions", () => {
   const m = JSON.parse(
     fs.readFileSync(path.join(root, "extension/manifest.json"), "utf8"),

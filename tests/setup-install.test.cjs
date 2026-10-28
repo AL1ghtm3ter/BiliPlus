@@ -15,14 +15,17 @@ const powershell = path.join(
   "System32/WindowsPowerShell/v1.0/powershell.exe",
 );
 const psAvailable = process.platform === "win32" && fs.existsSync(powershell);
-function ps(body) {
+function ps(body, options = {}) {
   const base = fs.mkdtempSync(path.join(os.tmpdir(), "biliplus-setup-test-")),
     pkg = path.join(base, "package");
   fs.mkdirSync(path.join(pkg, "native"), { recursive: true });
   fs.writeFileSync(path.join(pkg, "extension-id.txt"), "a".repeat(32));
   fs.writeFileSync(path.join(pkg, "native/Launcher.cs"), "fixture source");
   const info = {
-    packageRoot: pkg,
+    // Exercise valid path aliases independently of Join-Path's normalization,
+    // which differs between Windows PowerShell/.NET builds on local and CI.
+    packageRoot:
+      options.pathStyle === "mixed-dot" ? pkg.replace(/\\/g, "/") + "/." : pkg,
     installerPath: path.join(root, "安装本机桥接.ps1"),
     bootstrapPath: path.join(root, "scripts/bootstrap-node.ps1"),
     nodePath: process.execPath,
@@ -57,6 +60,7 @@ function ps(body) {
         maxBuffer: 1024 * 1024,
       },
     );
+    assert.ifError(result.error);
     assert.equal(result.status, 0, result.stdout + "\n" + result.stderr);
     assert(result.stdout.includes("QA_SETUP_PASS"));
     return result.stdout;
@@ -115,9 +119,11 @@ test(
   "no-Codex installation writes local config and can skip model setup",
   { skip: !psAvailable },
   () => {
-    ps(
-      `Install-BiliPlusBridge -PackageRoot $data.packageRoot -SkipModelSetup\n$config=Get-Content -LiteralPath (Join-Path $data.packageRoot 'native/runtime.json') -Raw | ConvertFrom-Json\nAssert-Test ($config.provider -eq 'local' -and $config.localModel -eq 'qwen3:4b') 'local config missing'\nAssert-Test (-not $config.codexPath) 'Codex path unexpectedly required'\nAssert-Test ($script:modelCalls -eq 0) 'SkipModelSetup ignored'\nAssert-Test ($script:registered -eq (Join-Path $data.packageRoot 'native/local.bilibili_codex.json')) 'wrong host registration'\n$manifest=Get-Content -LiteralPath $script:registered -Raw | ConvertFrom-Json\nAssert-Test ($manifest.allowed_origins[0] -eq ('chrome-extension://' + ('a'*32) + '/')) 'wrong origin'`,
-    );
+    for (const pathStyle of ["canonical", "mixed-dot"])
+      ps(
+        `Install-BiliPlusBridge -PackageRoot $data.packageRoot -SkipModelSetup\n$config=Get-Content -LiteralPath (Join-Path $data.packageRoot 'native/runtime.json') -Raw | ConvertFrom-Json\nAssert-Test ($config.provider -eq 'local' -and $config.localModel -eq 'qwen3:4b') 'local config missing'\nAssert-Test (-not $config.codexPath) 'Codex path unexpectedly required'\nAssert-Test ($script:modelCalls -eq 0) 'SkipModelSetup ignored'\n$expectedManifest=[IO.Path]::GetFullPath((Join-Path $data.packageRoot 'native/local.bilibili_codex.json'))\n$actualManifest=[IO.Path]::GetFullPath($script:registered)\nAssert-Test ([string]::Equals($actualManifest,$expectedManifest,[StringComparison]::OrdinalIgnoreCase)) ('wrong host registration: expected '+$expectedManifest+'; received '+$actualManifest)\n$manifest=Get-Content -LiteralPath $script:registered -Raw | ConvertFrom-Json\nAssert-Test ($manifest.allowed_origins[0] -eq ('chrome-extension://' + ('a'*32) + '/')) 'wrong origin'`,
+        { pathStyle },
+      );
   },
 );
 test(
@@ -171,9 +177,11 @@ test(
   "verified fixture ZIP extracts only inside the package and its selected portable Node is cached",
   { skip: !psAvailable },
   () => {
-    ps(
-      `. $data.bootstrapPath\nAdd-Type -AssemblyName System.IO.Compression\nAdd-Type -AssemblyName System.IO.Compression.FileSystem\n$script:sourceZip=Join-Path $data.base 'fixture.zip';$zip=[IO.Compression.ZipFile]::Open($script:sourceZip,[IO.Compression.ZipArchiveMode]::Create)\ntry{$entry=$zip.CreateEntry('node-v24.99.0-win-x64/node.exe');$stream=$entry.Open();try{$bytes=[Text.Encoding]::UTF8.GetBytes('fixture Node only');$stream.Write($bytes,0,$bytes.Length)}finally{$stream.Dispose()}}finally{$zip.Dispose()}\n$script:fixtureHash=(Get-BiliPlusFileSha256 -LiteralPath $script:sourceZip);$script:downloads=0\nfunction Get-BiliPlusNodeRelease{return [pscustomobject]@{Hash=$script:fixtureHash;FileName='node-v24.99.0-win-x64.zip';RootName='node-v24.99.0-win-x64';Uri='https://nodejs.org/dist/latest-v24.x/node-v24.99.0-win-x64.zip'}}\nfunction Receive-BiliPlusNodeArchive{param($Uri,$Destination)$script:downloads++;Copy-Item -LiteralPath $script:sourceZip -Destination $Destination}\nfunction Find-BiliPlusSystemNode{return $null}\nfunction Test-BiliPlusNodeRuntime{param($NodePath)return ((Test-Path -LiteralPath $NodePath) -and [IO.File]::ReadAllText($NodePath) -eq 'fixture Node only')}\n$before=$env:PATH;$node=Resolve-BiliPlusNode -PackageRoot $data.packageRoot;$cached=Resolve-BiliPlusNode -PackageRoot $data.packageRoot\nAssert-Test ($node -eq $cached -and $script:downloads -eq 1) 'portable runtime cache not reused'\nAssert-Test ($node.StartsWith((Join-Path $data.packageRoot '.runtime/node'),[StringComparison]::OrdinalIgnoreCase)) 'runtime escaped package'\nAssert-Test ($before -eq $env:PATH) 'PATH changed'`,
-    );
+    for (const pathStyle of ["canonical", "mixed-dot"])
+      ps(
+        `. $data.bootstrapPath\nAdd-Type -AssemblyName System.IO.Compression\nAdd-Type -AssemblyName System.IO.Compression.FileSystem\n$script:sourceZip=Join-Path $data.base 'fixture.zip';$zip=[IO.Compression.ZipFile]::Open($script:sourceZip,[IO.Compression.ZipArchiveMode]::Create)\ntry{$entry=$zip.CreateEntry('node-v24.99.0-win-x64/node.exe');$stream=$entry.Open();try{$bytes=[Text.Encoding]::UTF8.GetBytes('fixture Node only');$stream.Write($bytes,0,$bytes.Length)}finally{$stream.Dispose()}}finally{$zip.Dispose()}\n$script:fixtureHash=(Get-BiliPlusFileSha256 -LiteralPath $script:sourceZip);$script:downloads=0\nfunction Get-BiliPlusNodeRelease{return [pscustomobject]@{Hash=$script:fixtureHash;FileName='node-v24.99.0-win-x64.zip';RootName='node-v24.99.0-win-x64';Uri='https://nodejs.org/dist/latest-v24.x/node-v24.99.0-win-x64.zip'}}\nfunction Receive-BiliPlusNodeArchive{param($Uri,$Destination)$script:downloads++;Copy-Item -LiteralPath $script:sourceZip -Destination $Destination}\nfunction Find-BiliPlusSystemNode{return $null}\nfunction Test-BiliPlusNodeRuntime{param($NodePath)return ((Test-Path -LiteralPath $NodePath) -and [IO.File]::ReadAllText($NodePath) -eq 'fixture Node only')}\n$before=$env:PATH;$node=Resolve-BiliPlusNode -PackageRoot $data.packageRoot;$cached=Resolve-BiliPlusNode -PackageRoot $data.packageRoot\nAssert-Test ($node -eq $cached -and $script:downloads -eq 1) 'portable runtime cache not reused'\n$runtimeDirectory=[IO.Path]::GetFullPath((Join-Path $data.packageRoot '.runtime/node')).TrimEnd([IO.Path]::DirectorySeparatorChar,[IO.Path]::AltDirectorySeparatorChar)\n$runtimeBoundary=$runtimeDirectory+[IO.Path]::DirectorySeparatorChar\nAssert-Test ([IO.Path]::GetFullPath($node).StartsWith($runtimeBoundary,[StringComparison]::OrdinalIgnoreCase)) ('runtime escaped package: expected child of '+$runtimeBoundary+'; received '+$node)\n$sibling=Join-Path ($runtimeDirectory+'-other') 'node.exe';$caught=$false;try{Assert-BiliPlusChildPath -Root $runtimeDirectory -Path $sibling|Out-Null}catch{$caught=$true};Assert-Test $caught 'same-prefix sibling accepted as runtime child'\nAssert-Test ($before -eq $env:PATH) 'PATH changed'`,
+        { pathStyle },
+      );
   },
 );
 function cliDeps(prepare) {
