@@ -63,7 +63,7 @@ async function boot() {
   let video = trackedMedia(document.querySelector("video"));
   const timers = new Map(),
     ports = [],
-    store = {};
+    store = { biliSettings: { ai: { enabled: true } } };
   let now = 100000,
     serial = 0;
   class ClockDate extends Date {

@@ -167,6 +167,8 @@ function harness(html = "", initial = {}, pathname = "/") {
       },
     },
     tabs: {
+      create: async (options) =>
+        messages.push({ type: "open-tab", ...options }),
       query: async () => [{ id: 1 }],
       sendMessage: async (id, message) => messages.push({ id, ...message }),
     },
@@ -1069,7 +1071,7 @@ test("QAHS-25 setup defaults explain the download and never mark missing runtime
   assert(
     h.document
       .querySelector("#model-provider-note")
-      .textContent.includes("无需注册或登录"),
+      .textContent.includes("无需账号"),
   );
   assert(
     h.document
@@ -1100,6 +1102,63 @@ test("QAHS-25 setup defaults explain the download and never mark missing runtime
     model: "qwen3:4b",
   });
 });
+test("fresh popup keeps AI off and routes its setup entry without connecting a model", async () => {
+  const h = await page("popup");
+  assert.equal(h.document.querySelector("#ai-toggle input").checked, false);
+  assert.equal(h.messages.length, 0);
+  h.document.querySelector("#ai-setup").click();
+  await h.settle();
+  assert.deepEqual(h.messages, [
+    { type: "open-tab", url: "/extension/options.html#ai" },
+  ]);
+  assert.equal(
+    h.storage.biliSettings,
+    undefined,
+    "opening setup does not persist an enabled switch",
+  );
+});
+
+test("setup downloads only the bundled launcher and keeps fresh AI disabled", async () => {
+  const h = await page("options"),
+    downloads = [];
+  assert.equal(h.messages.length, 0);
+  const create = h.document.createElement.bind(h.document);
+  h.document.createElement = (tag, ...args) => {
+    const node = create(tag, ...args);
+    if (tag === "a")
+      node.click = () =>
+        downloads.push({
+          href: node.getAttribute("href"),
+          name: node.getAttribute("download"),
+          attached: node.isConnected,
+        });
+    return node;
+  };
+  h.document.querySelector("#ai-installer-download").click();
+  await h.settle();
+  assert.deepEqual(downloads, [
+    {
+      href: "/extension/setup/configure-local-ai.cmd",
+      name: "BiliPlus-configure-local-ai.cmd",
+      attached: true,
+    },
+  ]);
+  assert.equal(
+    h.document.querySelector('[data-key="ai.enabled"]').checked,
+    false,
+  );
+  assert.equal(h.storage.biliSettings, undefined);
+  assert.equal(
+    h.messages.length,
+    0,
+    "downloading never invokes native or model APIs",
+  );
+  assert.equal(
+    h.document.querySelector('a[download="BiliPlus-configure-local-ai.cmd"]'),
+    null,
+  );
+});
+
 test("QAHS-26 model preparation uses the requested port, validates progress, and saves only provider/model on a matching ready result", async () => {
   const h = await page("options", {
       biliSettings: { home: { preview: false } },
@@ -1141,6 +1200,11 @@ test("QAHS-26 model preparation uses the requested port, validates progress, and
   await h.settle();
   assert.equal(h.storage.biliSettings.ai.provider, "local");
   assert.equal(h.storage.biliSettings.ai.localModel, "qwen3:1.7b");
+  assert.equal(
+    h.storage.biliSettings.ai.enabled,
+    false,
+    "model readiness must not silently enable AI",
+  );
   assert.equal(
     h.storage.biliSettings.home.preview,
     false,

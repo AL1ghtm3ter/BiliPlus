@@ -1,4 +1,4 @@
-﻿param([switch]$SkipModelSetup)
+﻿param([switch]$PrepareModel, [switch]$SkipModelSetup)
 $ErrorActionPreference = 'Stop'
 $script:BiliPlusPackageRoot = $PSScriptRoot
 . (Join-Path $PSScriptRoot 'scripts\bootstrap-node.ps1')
@@ -61,7 +61,8 @@ function Invoke-BiliPlusModelSetup {
   if ($LASTEXITCODE -ne 0) { throw "Local text-model preparation did not finish (exit $LASTEXITCODE). The bridge is installed; rerun this script or use the model setup button in extension settings." }
 }
 function Install-BiliPlusBridge {
-  param([string]$PackageRoot=$script:BiliPlusPackageRoot, [switch]$SkipModelSetup)
+  param([string]$PackageRoot=$script:BiliPlusPackageRoot, [switch]$PrepareModel, [switch]$SkipModelSetup)
+  if ($PrepareModel -and $SkipModelSetup) { throw 'PrepareModel and SkipModelSetup cannot be used together.' }
   $packageRoot = [IO.Path]::GetFullPath($PackageRoot)
   $nativeRoot = Assert-BiliPlusChildPath -Root $packageRoot -Path (Join-Path $packageRoot 'native')
   $nativeManifest = Assert-BiliPlusChildPath -Root $packageRoot -Path (Join-Path $nativeRoot 'local.bilibili_codex.json')
@@ -104,9 +105,9 @@ function Install-BiliPlusBridge {
   Register-BiliPlusNativeHost -NativeManifest $nativeManifest
   Write-Host '本机桥接已安装。扩展仍需在 Chrome 的 chrome://extensions 手动选择“加载已解压的扩展程序”：'
   Write-Host (Join-Path $packageRoot 'extension')
-  Write-Host '默认使用本机 Qwen3 4B 文本模型，无需注册账号。首次模型下载约 2.5GB；已有模型会复用。'
+  Write-Host 'AI 首次默认关闭；仅安装桥接不会开启 AI 或默认下载模型。'
   Write-Host '语音转写（ASR）仍是独立可选功能；文本模型准备成功不代表 ASR 已安装。'
-  if ($SkipModelSetup) { Write-Host '已按 -SkipModelSetup 跳过模型准备；可稍后在扩展设置下载并配置。' }
-  else { Invoke-BiliPlusModelSetup -NodePath $nodePath -PackageRoot $packageRoot }
+  if ($PrepareModel) { Invoke-BiliPlusModelSetup -NodePath $nodePath -PackageRoot $packageRoot }
+  else { Write-Host '模型准备已跳过；需要本机 AI 时，可运行 BiliPlus-configure-local-ai.cmd，或在扩展设置中下载并配置。' }
 }
-if ($MyInvocation.InvocationName -ne '.') { Install-BiliPlusBridge -SkipModelSetup:$SkipModelSetup }
+if ($MyInvocation.InvocationName -ne '.') { Install-BiliPlusBridge -PrepareModel:$PrepareModel -SkipModelSetup:$SkipModelSetup }

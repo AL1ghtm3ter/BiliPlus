@@ -41,7 +41,7 @@ function render() {
     toggle(
       "ai.enabled",
       "字幕与总结",
-      "视频播放页 · " +
+      (config.ai.enabled ? "视频播放页 · " : "默认关闭，可按需开启 · ") +
         (config.ai.provider === "local"
           ? "本机处理，无需账号"
           : "使用已登录的 Codex") +
@@ -134,6 +134,9 @@ $("#theme").addEventListener("click", async () => {
 });
 $("#settings").addEventListener("click", () =>
   chrome.runtime.openOptionsPage(),
+);
+$("#ai-setup").addEventListener("click", () =>
+  chrome.tabs.create({ url: chrome.runtime.getURL("options.html#ai") }),
 );
 $("#check").addEventListener("click", async (event) => {
   const button = event.currentTarget;

@@ -9,6 +9,13 @@ const root = path.resolve(
   process.env.BILI_TEST_SOURCE_ROOT || path.join(__dirname, ".."),
 );
 function boot(html, readyState = "complete", stored = {}) {
+  stored = {
+    ...stored,
+    biliSettings: {
+      ...stored.biliSettings,
+      ai: { enabled: true, ...stored.biliSettings?.ai },
+    },
+  };
   const { window, document } = parseHTML(
     "<!doctype html><html><head></head><body>" + html + "</body></html>",
   );
@@ -59,11 +66,18 @@ function boot(html, readyState = "complete", stored = {}) {
     setTimeout: (f) => (intervals.push(f), intervals.length),
     clearTimeout() {},
   });
-  for (const f of ["common/config.js", "content.js"])
+  for (const f of ["common/config.js", "content.js"]) {
+    if (f === "content.js")
+      context.BiliFeatures = {
+        context: {
+          settings: () => context.BiliConfig.normalize(stored.biliSettings),
+        },
+      };
     vm.runInContext(
       fs.readFileSync(path.join(root, "extension", f), "utf8"),
       context,
     );
+  }
   return {
     window,
     document,
@@ -76,6 +90,16 @@ function boot(html, readyState = "complete", stored = {}) {
 }
 const native =
   '<div id="playerWrap"><video></video></div><div id="commentapp"><bili-comments></bili-comments></div><aside class="right-container"><div class="right-container-inner scroll-sticky"><div class="up-panel-container">UP信息</div><div id="danmukuBox">弹幕</div><div class="recommend-list-v1"><img src="https://i0.hdslb.com/cover.jpg"></div></div></aside>';
+
+test("AI-disabled first visit leaves the native sidebar intact without mounting or automatically reading captions", () => {
+  const h = boot(native, "complete", {
+    biliSettings: { ai: { enabled: false } },
+  });
+  h.scan();
+  assert.equal(h.document.querySelector("#bili-codex-root"), null);
+  assert(h.document.querySelector("#danmukuBox"));
+  assert(h.document.querySelector(".recommend-list-v1"));
+});
 test("AI panel waits for window load then embeds after UP information without moving comments or recommendations", () => {
   const h = boot(native, "loading"),
     comment = h.document.querySelector("#commentapp"),
@@ -284,7 +308,10 @@ test("automatic ad recognition keeps the default subtitle tab and a new video re
     video = h.document.querySelector("video");
   h.context.BiliFeatures = {
     context: {
-      settings: () => h.context.BiliConfig.normalize({ ai: { autoAds: true } }),
+      settings: () =>
+        h.context.BiliConfig.normalize({
+          ai: { enabled: true, autoAds: true },
+        }),
     },
   };
   video.paused = false;

@@ -35,7 +35,9 @@ function harness({
   subtitleBody = [{ from: 0, to: 5, content: "当前视频的合成中文字幕" }],
   modelAnswer,
 } = {}) {
-  const storage = { biliSettings: C.normalize({ ai }) },
+  const storage = {
+      biliSettings: C.normalize({ ai: { enabled: true, ...ai } }),
+    },
     native = [],
     diagnostics = [],
     localCalls = [],
@@ -355,7 +357,18 @@ function harness({
     setup,
   };
 }
-test("settings default local/qwen3:4b traverses background framing into actual host/local helper and validated result", async () => {
+test("fresh storage refuses model tasks without native calls until AI is explicitly enabled", async () => {
+  const h = harness();
+  delete h.storage.biliSettings;
+  const r = await h.request();
+  assert.match(r.error.error, /已关闭/);
+  assert.equal(r.result, undefined);
+  assert.equal(h.native.length, 0);
+  assert.equal(h.ollamaCalls.length, 0);
+  assert.equal(h.codexCalls.length, 0);
+});
+
+test("explicitly enabled local/qwen3:4b traverses background framing into actual host/local helper and validated result", async () => {
   const h = harness(),
     r = await h.request();
   assert(!r.error);
@@ -373,7 +386,7 @@ test("settings default local/qwen3:4b traverses background framing into actual h
   assert(h.ollamaCalls.some((c) => c.url.endsWith("/api/chat")));
 });
 test("explicit codex selection traverses background/host without invoking local generation", async () => {
-  const h = harness({ ai: { provider: "codex" } }),
+  const h = harness({ ai: { enabled: true, provider: "codex" } }),
     r = await h.request();
   assert(!r.error);
   assert.equal(r.result.meta.provider, "codex");
@@ -513,18 +526,20 @@ test("AI caches cannot cross provider or local model selections", async () => {
   const hit = await h.request();
   assert.equal(hit.result.meta.cached, true);
   assert.equal(h.native.length, 1);
-  h.storage.biliSettings = C.normalize({ ai: { provider: "codex" } });
+  h.storage.biliSettings = C.normalize({
+    ai: { enabled: true, provider: "codex" },
+  });
   const codex = await h.request();
   assert.equal(codex.result.meta.provider, "codex");
   assert.equal(h.native.length, 2);
   h.storage.biliSettings = C.normalize({
-    ai: { provider: "local", localModel: "qwen3:1.7b" },
+    ai: { enabled: true, provider: "local", localModel: "qwen3:1.7b" },
   });
   const small = await h.request();
   assert.equal(small.result.meta.model, "qwen3:1.7b");
   assert.equal(h.native.length, 3);
   h.storage.biliSettings = C.normalize({
-    ai: { provider: "local", localModel: "qwen3:4b" },
+    ai: { enabled: true, provider: "local", localModel: "qwen3:4b" },
   });
   const restored = await h.request();
   assert.equal(restored.result.meta.model, "qwen3:4b");

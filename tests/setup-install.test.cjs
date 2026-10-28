@@ -82,13 +82,30 @@ function ps(body, options = {}) {
     fs.rmSync(absolute, { recursive: true, force: true });
   }
 }
-test("installer contract defaults to account-free model setup without login or global PATH changes", () => {
+test(
+  "plain bridge installation does not prepare a model, and conflicting setup switches fail before writes",
+  { skip: !psAvailable },
+  () => {
+    ps(`Install-BiliPlusBridge -PackageRoot $data.packageRoot
+Assert-Test ($script:modelCalls -eq 0) 'plain install prepared a model'
+Assert-Test (Test-Path -LiteralPath (Join-Path $data.packageRoot 'native/runtime.json')) 'bridge was not installed'`);
+    ps(`$caught=$false
+try { Install-BiliPlusBridge -PackageRoot $data.packageRoot -PrepareModel -SkipModelSetup } catch { $caught=$true }
+Assert-Test $caught 'conflicting switches accepted'
+Assert-Test (-not(Test-Path -LiteralPath (Join-Path $data.packageRoot 'native/runtime.json'))) 'conflict wrote config'
+Assert-Test ($script:modelCalls -eq 0) 'conflict prepared a model'`);
+  },
+);
+
+test("installer contract makes model setup opt-in without login or global PATH changes", () => {
   const source = fs.readFileSync(path.join(root, "安装本机桥接.ps1"), "utf8"),
     bootstrap = fs.readFileSync(
       path.join(root, "scripts/bootstrap-node.ps1"),
       "utf8",
     );
-  assert(source.includes("param([switch]$SkipModelSetup)"));
+  assert(
+    source.includes("param([switch]$PrepareModel, [switch]$SkipModelSetup)"),
+  );
   assert(source.includes("provider='local'"));
   assert(source.includes("localModel='qwen3:4b'"));
   assert(
@@ -135,11 +152,11 @@ test(
   },
 );
 test(
-  "normal first installation invokes default model preparation and preserves optional existing Codex path",
+  "explicit model preparation preserves optional existing Codex path",
   { skip: !psAvailable },
   () => {
     ps(
-      `$optional=Join-Path $data.packageRoot '中文可选-codex.exe';[IO.File]::WriteAllText($optional,'not executed')\n[IO.File]::WriteAllText((Join-Path $data.packageRoot 'native/runtime.json'),(@{codexPath=$optional;codexBinRoot=$data.packageRoot}|ConvertTo-Json))\nRemove-Item Function:Find-BiliPlusCodex\n# Restore the real optional path discovery without invoking a login command.\n. $data.installerPath\nfunction Get-BiliPlusHostRegistrations{return @()}\nfunction Register-BiliPlusNativeHost{param($NativeManifest)$script:registered=$NativeManifest}\nfunction Resolve-BiliPlusNode{param($PackageRoot)return $data.nodePath}\nfunction Build-BiliPlusLauncher{param($NativeRoot,$Destination)[IO.File]::WriteAllText($Destination,'fixture launcher')}\nfunction Build-BiliPlusRuntimeHost{param($NativeRoot,$Destination)[IO.File]::WriteAllText($Destination,'fixture runtime host')}\nfunction Invoke-BiliPlusModelSetup{param($NodePath,$PackageRoot)$script:modelCalls++}\nInstall-BiliPlusBridge -PackageRoot $data.packageRoot\n$config=Get-Content -LiteralPath (Join-Path $data.packageRoot 'native/runtime.json') -Raw -Encoding UTF8|ConvertFrom-Json\nAssert-Test ($script:modelCalls -eq 1) 'first install did not prepare model'\nAssert-Test ($config.provider -eq 'local' -and $config.codexPath -eq $optional) 'optional Codex configuration lost'`,
+      `$optional=Join-Path $data.packageRoot '中文可选-codex.exe';[IO.File]::WriteAllText($optional,'not executed')\n[IO.File]::WriteAllText((Join-Path $data.packageRoot 'native/runtime.json'),(@{codexPath=$optional;codexBinRoot=$data.packageRoot}|ConvertTo-Json))\nRemove-Item Function:Find-BiliPlusCodex\n# Restore the real optional path discovery without invoking a login command.\n. $data.installerPath\nfunction Get-BiliPlusHostRegistrations{return @()}\nfunction Register-BiliPlusNativeHost{param($NativeManifest)$script:registered=$NativeManifest}\nfunction Resolve-BiliPlusNode{param($PackageRoot)return $data.nodePath}\nfunction Build-BiliPlusLauncher{param($NativeRoot,$Destination)[IO.File]::WriteAllText($Destination,'fixture launcher')}\nfunction Build-BiliPlusRuntimeHost{param($NativeRoot,$Destination)[IO.File]::WriteAllText($Destination,'fixture runtime host')}\nfunction Invoke-BiliPlusModelSetup{param($NodePath,$PackageRoot)$script:modelCalls++}\nInstall-BiliPlusBridge -PackageRoot $data.packageRoot -PrepareModel\n$config=Get-Content -LiteralPath (Join-Path $data.packageRoot 'native/runtime.json') -Raw -Encoding UTF8|ConvertFrom-Json\nAssert-Test ($script:modelCalls -eq 1) 'first install did not prepare model'\nAssert-Test ($config.provider -eq 'local' -and $config.codexPath -eq $optional) 'optional Codex configuration lost'`,
     );
   },
 );

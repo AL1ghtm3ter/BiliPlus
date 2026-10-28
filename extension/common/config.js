@@ -3,7 +3,7 @@
   const DEFAULTS = {
     schema: 2,
     ai: {
-      enabled: true,
+      enabled: false,
       provider: "local",
       localModel: "qwen3:4b",
       autoAds: false,
@@ -137,7 +137,7 @@
       group: "ai",
       title: "字幕与总结",
       items: [
-        ["ai.enabled", "视频助手", "总结、提问、字幕与广告识别"],
+        ["ai.enabled", "字幕与总结", "首次默认关闭，按需配置本机 AI 后开启"],
         ["ai.autoAds", "自动识别广告", "开始播放后识别口播推广，调用所选模型"],
         ["ai.skipAds", "自动跳过广告", "仅跳过达到置信度门槛的片段"],
         [

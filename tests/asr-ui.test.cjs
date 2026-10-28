@@ -28,7 +28,7 @@ async function panel(provider = "local", layout = {}) {
       search: "",
       href: "https://www.bilibili.com/video/BV1ph4y1c7kp/",
     },
-    storage = { biliSettings: { ai: { provider }, layout } },
+    storage = { biliSettings: { ai: { enabled: true, provider }, layout } },
     ports = [],
     timers = new Map();
   let serial = 0;

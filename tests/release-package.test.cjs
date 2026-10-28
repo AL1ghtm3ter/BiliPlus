@@ -28,6 +28,8 @@ test("public source tree excludes generated host state, historical captures and 
     "scripts/bootstrap-node.ps1",
     "scripts/source-files.cjs",
     "extension/icons/icon128.png",
+    "BiliPlus-configure-local-ai.cmd",
+    "extension/setup/configure-local-ai.cmd",
   ])
     assert(files.includes(name), name);
 });

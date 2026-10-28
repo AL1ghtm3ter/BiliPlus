@@ -264,6 +264,23 @@ details[open] .group-chevron {
   font-size: 12px;
   color: var(--ink);
 }
+.ai-setup-entry {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  padding: 2px 0 10px;
+}
+.ai-setup-entry button {
+  color: var(--link);
+  padding: 4px 0;
+  font-size: 12px;
+}
+.ai-setup-entry span {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
 footer {
   margin-top: 6px;
   border-top: 1px solid var(--line);

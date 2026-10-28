@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "小电视助手 · BiliPlus",
   "description": "B站倍速、推荐历史、封面查看、评论属地与界面净化；附带字幕读取、本机语音转写及可选文字分析。独立源码版。",
-  "version": "3.0.3",
+  "version": "3.0.4",
   "icons": {
     "16": "icons/icon16.png",
     "32": "icons/icon32.png",

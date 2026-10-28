@@ -23,7 +23,7 @@ function sourceFiles(root) {
       else if (allowed(name)) add(name);
     }
   }
-  walk("extension", (name) => /\.(?:js|css|html|svg|png|json)$/.test(name));
+  walk("extension", (name) => /\.(?:js|css|html|svg|png|json|cmd)$/.test(name));
   walk("tests", (name) => /\.test\.cjs$/.test(name));
   for (const name of [
     "native/Launcher.cs",
@@ -68,6 +68,7 @@ function sourceFiles(root) {
     ".gitignore",
     ".gitattributes",
     "extension-id.txt",
+    "BiliPlus-configure-local-ai.cmd",
     "安装本机桥接.ps1",
     "安装本机转写.ps1",
     "卸载本机桥接.ps1",

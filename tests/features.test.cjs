@@ -41,7 +41,7 @@ function harness(
   const chrome = {
     storage: {
       local: {
-        get: async () => ({}),
+        get: async () => ({ biliSettings: { ai: { enabled: true } } }),
         set: async () => {},
         remove: async () => {},
       },
@@ -95,6 +95,10 @@ function harness(
     console,
   });
   function load(file) {
+    if (file === "content.js" && !context.BiliFeatures.context)
+      context.BiliFeatures.context = {
+        settings: () => context.BiliConfig.normalize({ ai: { enabled: true } }),
+      };
     if (file === "content.js" && !document.querySelector(".right-container")) {
       const sidebar = document.createElement("aside");
       sidebar.className = "right-container";
@@ -158,6 +162,8 @@ test("configuration preserves user choices, bounds numbers, excludes unknown key
     /上限/,
   );
   assert.equal(C.normalize().ai.autoAds, false);
+  assert.equal(C.normalize().ai.enabled, false);
+  assert.equal(C.normalize({ ai: { enabled: true } }).ai.enabled, true);
   assert.equal(C.normalize().player.speedEnabled, false);
   assert.equal(C.normalize().filter.enabled, false);
 });
@@ -787,7 +793,7 @@ test("disabling AI removes ad markers and stops a pending automatic skip", async
       '<div id="playerWrap"><video></video><div class="bpx-player-progress-wrap"></div></div>',
     ),
     video = h.document.querySelector("video"),
-    settings = C.normalize({ ai: { skipCountdown: 3 } });
+    settings = C.normalize({ ai: { enabled: true, skipCountdown: 3 } });
   video.duration = 70;
   video.currentTime = 12;
   video.paused = false;

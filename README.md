@@ -1,12 +1,29 @@
 # 小电视助手 · BiliPlus
 
-**3.0.3 · Public Beta · 含本机服务无终端弹窗修复**
+**3.0.4 · Public Beta · AI 按需配置，首次默认关闭**
 
 给 B站网页版补上更顺手的播放和浏览工具：无级倍速、换一换历史、界面净化、评论公开属地，以及封面查看。视频页的字幕面板嵌入右栏，支持调节高度和内部滚动。
 
 字幕总结、问答、广告片段识别与整理成文默认使用本机 **Ollama + Qwen3:4b**，无需 Codex 账号。Codex 是可以显式选择的另一种处理方式。本项目的独立源码按 [MIT](LICENSE) 开源；第三方软件、模型及站点内容遵循各自许可，见 [第三方说明](THIRD-PARTY-NOTICES.md)。
 
 这是公开测试版。真实本机模型已通过四类后端任务验证，但无 Node/无 Ollama 的干净 Windows 首次安装，以及真实 Chrome 的所有功能组合，尚未完成验收；B站页面变化也可能需要适配。
+
+## 下载后能直接用什么？
+
+从 [GitHub 发布页下载完整源码包](https://github.com/AL1ghtm3ter/BiliPlus/releases/tag/v3.0.4)，解压后按下表选择安装方式。
+
+**源码 ZIP 不包含 Node、Ollama、Qwen3 或 Whisper。首次加载扩展时，AI 默认关闭，不会自动安装或下载模型。**
+
+| 想使用的功能 | 下载、解压后还需要做什么 |
+| --- | --- |
+| 倍速、推荐历史、封面、属地、净化 | 在 Chrome 加载 `extension` 文件夹，再按需打开功能开关；无需模型或账号 |
+| 读取、导出已有 B站字幕 | 手动打开“字幕与总结”面板；仅读取已有字幕无需模型 |
+| 本机总结、问答、广告识别、整理成文 | 在插件菜单点击“配置本机 AI”，下载并双击配置脚本，准备桥接、Node、Ollama 和 Qwen3；最后手动开启“字幕与总结” |
+| 无字幕视频的语音转写 | 另行安装下文的 Whisper 转写环境，文字模型不能直接识别音频 |
+
+首次使用本机 AI 不必分别手动下载各组件：一键脚本会复用已有环境，缺少时下载并配置默认的 Qwen3 4B（模型约 2.5GB，首次需联网）。无需手动配置 PyTorch、CUDA 或 Conda。**已有 Ollama 和 Qwen3 也仍需安装本机桥接，让浏览器能调用模型。**
+
+请保留完整解压目录。浏览器不能直接执行 Windows 安装脚本：菜单提供下载入口，用户需要在下载列表双击 `BiliPlus-configure-local-ai.cmd`，并按提示选择完整 BiliPlus 目录；也可直接双击完整源码目录中的同名脚本。配置完成不会自动打开 AI 开关。
 
 ## 功能
 
@@ -23,7 +40,7 @@
 
 只使用倍速、首页历史、封面、属地和净化时，在 `chrome://extensions` 开启开发者模式并加载本项目的 `extension` 文件夹即可，不需要 Node、Ollama 或 Codex。读取和导出已有字幕也不需要模型。
 
-需要总结、问答等模型功能时，再按下面步骤安装本机桥接。模型不会随浏览器启动自动下载；安装脚本的模型准备、设置页的下载按钮或首次模型任务才会触发准备。
+需要本机 AI 时，推荐使用插件菜单的“配置本机 AI”入口，或双击完整目录中的 `BiliPlus-configure-local-ai.cmd`。下面是手动安装桥接的方式；普通桥接安装默认跳过模型准备。
 
 适用环境：Windows x64、Chrome 120 或更新版本。桥接启动器需要系统 .NET Framework C# 编译器；源码包不附带运行环境或模型权重。
 
@@ -36,15 +53,15 @@
 
    脚本复用已有可运行 Node；没有 Node 时，从 `nodejs.org` 下载 Node 24 LTS Windows x64 便携 ZIP，核对官方 SHA256 清单并检查 ZIP 路径后解压到项目 `.runtime/node`。这一步不修改系统 PATH。桥接仅注册到当前 Windows 用户；若其他目录已占用同名主机，安装会停止。
 
-   随后准备默认文本模型。已有 Ollama/模型会复用；缺失 Ollama 时，下载官方 Windows 安装器，验证 Authenticode 签名及发布者，再安装到当前用户目录，启动并下载模型。终端显示实际阶段与下载进度，`Ctrl+C` 可取消。取消后可重跑脚本或在设置页继续准备。
+   该命令只安装桥接和必需的 Node，默认不下载模型。需要同时准备默认文本模型时，使用 `powershell.exe -NoProfile -ExecutionPolicy Bypass -File '.\安装本机桥接.ps1' -PrepareModel`，一键配置脚本也使用这个参数。已有 Ollama/模型会复用；缺失 Ollama 时，从官方安装器验证签名后安装到当前用户目录，再下载模型。终端显示阶段和进度，`Ctrl+C` 可取消；可重跑脚本或在设置页继续准备。
 
    默认 [Qwen3:4b](https://ollama.com/library/qwen3:4b) 为约 4B 参数、Q4_K_M 量化，模型文件约 **2.5GB**；运行时、缓存和推理还需额外磁盘及内存。首次准备需要联网，耗时取决于网络和机器。
 
 3. 打开 `chrome://extensions`，启用“开发者模式”，点击“加载已解压的扩展程序”，选择项目中的 **`extension` 文件夹**。安装脚本不会替你完成 Chrome 这一步。
-4. 确认扩展名称为“小电视助手 · BiliPlus”、版本为 **3.0.3**。点击扩展图标的“检查本机连接”，分别核对桥接、本机文本模型与可选转写的状态。
-5. 刷新 B站标签页。在扩展弹窗开启需要的播放、布局或首页功能；视频右栏默认打开字幕页。先用有字幕的短视频读取字幕，再测试总结。
+4. 确认扩展名称为“小电视助手 · BiliPlus”、版本为 **3.0.4**。点击扩展图标的“检查本机连接”，分别核对桥接、本机文本模型与可选转写的状态。
+5. 刷新 B站标签页，按需开启播放、布局或首页功能。需要字幕助手时手动开启“字幕与总结”；先用有字幕的短视频读取字幕，模型就绪后再测试总结。旧用户已保存的开关保持原值。
 
-仅重装桥接、暂不准备模型时：
+普通安装已经默认跳过模型；旧版 `-SkipModelSetup` 参数仍兼容：
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File '.\安装本机桥接.ps1' -SkipModelSetup
@@ -59,7 +76,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File '.\安装本机桥接.ps
 **无字幕视频的本机转写**：文本模型不能把音频识别成字幕。需要时先按 [uv 官方说明](https://docs.astral.sh/uv/getting-started/installation/)安装 `uv`，然后单独运行：
 
 ```powershell
-& '.\安装本机转写.ps1'
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File '.\安装本机转写.ps1'
 ```
 
 默认使用 faster-whisper `small`、CPU int8；可加 `-Model base` 选择较小模型。脚本准备 Python 3.11 环境和语音模型，优先复用已有缓存。识别在本机进行，但获取 B站可播放音轨仍需网络及当前账号权限。文本模型准备完成不代表转写已就绪；真实无字幕视频的浏览器自动回退仍待进一步验收。
@@ -88,7 +105,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File '.\安装本机桥接.ps
 
 Node 桥接由 Chrome 按需启动，通过 Native Messaging 标准输入/输出通信，没有另设 HTTP 桥接服务。Ollama 自身是独立本机服务。HTTPS 背景图会由浏览器请求所选地址；本地背景在浏览器缩放后保存。配置备份不含账号登录信息、字幕或分析缓存。
 
-本机服务需要由扩展启动时，使用独立的 Windows GUI 宿主隐藏服务及其推理子进程的控制台；桥接退出后服务仍可继续运行。已有健康的 Ollama 服务直接复用。安装脚本从源码编译两个宿主，不随源码包分发机器上的 EXE；更新这批修复后需要重跑桥接安装脚本。此修订保持扩展版本 3.0.3，发布资产以 `runtime-fix` 区分。
+本机服务需要由扩展启动时，使用独立的 Windows GUI 宿主隐藏服务及其推理子进程的控制台；桥接退出后服务仍可继续运行。已有健康的 Ollama 服务直接复用。安装脚本从源码编译两个宿主，不随源码包分发机器上的 EXE。安装时主动运行的一键配置窗口用于显示真实阶段和下载进度。
 
 ## 更新、移动与卸载
 
@@ -122,4 +139,4 @@ npm run package
 
 测试包含模拟 DOM、Chrome API 替身、原生消息和 Windows 安装脚本隔离测试；不能替代真实站点验收。现有机器已实际运行桥接安装的 `-SkipModelSetup` 路径并复用原有 Node。实际 Windows EXE → NativeHost → Ollama Qwen3:4b 已用合成中文字幕通过总结、问答、广告识别、整理成文四类任务；这不是干净机器完整安装、Chrome 实页点击验收或全视频准确率评测。完整边界见 [测试与发布说明](RELEASE-TESTS.md)。
 
-`npm run package` 生成 `dist/BiliPlus-3.0.3-source.zip`。公开源码使用明确白名单，保留完整可读源码、[架构](ARCHITECTURE.md)、[功能](FEATURES.md)、[更新记录](CHANGELOG.md)、[MIT 许可](LICENSE)与[第三方说明](THIRD-PARTY-NOTICES.md)。运行目录、模型、机器配置、旧插件包、派生分析材料及历史个人测试日志不属于公开源码包。
+`npm run package` 生成 `dist/BiliPlus-3.0.4-source.zip`。公开源码使用明确白名单，保留完整可读源码、[架构](ARCHITECTURE.md)、[功能](FEATURES.md)、[更新记录](CHANGELOG.md)、[MIT 许可](LICENSE)与[第三方说明](THIRD-PARTY-NOTICES.md)。运行目录、模型、机器配置、旧插件包、派生分析材料及历史个人测试日志不属于公开源码包。

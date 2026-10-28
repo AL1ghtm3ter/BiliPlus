@@ -175,7 +175,7 @@ function updateModelControls() {
   if (provider) provider.disabled = !!modelSetup;
   if (note)
     note.textContent = local
-      ? "默认使用本机模型，内容在这台电脑上处理，无需注册或登录。Qwen3 4B 首次约需下载 2.5GB；自动处理默认关闭。"
+      ? "AI 首次默认关闭，按需配置后再开启。文字在本机处理，无需账号；Qwen3 4B 首次约下载 2.5GB。"
       : "使用本机已登录的 Codex，内容将交给对应模型服务处理，需要账号及可用额度。不会自动从本机模型切换到 Codex。";
   for (const id of ["model-setup-start", "model-setup-check"])
     if ($("#" + id)) $("#" + id).disabled = !!modelSetup;
@@ -378,6 +378,10 @@ function startModelSetup() {
 function modelControls(page) {
   const section = el("div", undefined, { id: "model-setup-controls" }),
     buttons = el("div", undefined, { class: "button-row" }),
+    install = el("button", "下载一键配置脚本", {
+      type: "button",
+      id: "ai-installer-download",
+    }),
     start = el("button", "下载并配置本地模型", {
       type: "button",
       id: "model-setup-start",
@@ -399,6 +403,16 @@ function modelControls(page) {
     });
   buttons.append(start, check, cancel);
   section.append(
+    el("h3", "首次配置本机 AI"),
+    el(
+      "p",
+      "下载脚本后双击运行；若提示选择文件夹，请选择完整解压的 BiliPlus 目录。脚本会准备桥接、Node、Ollama 和 Qwen3 4B，首次需联网下载模型。浏览器不会自动执行脚本。",
+    ),
+    install,
+    el(
+      "p",
+      "配置完成后，先检查模型状态，再手动开启上方“字幕与总结”并保存。已有桥接时，可直接使用下方按钮准备模型；安装或准备模型不会自动开启 AI。",
+    ),
     buttons,
     progress,
     el("p", "尚未检查本机模型。", {
@@ -407,6 +421,17 @@ function modelControls(page) {
       "aria-live": "polite",
     }),
   );
+  install.addEventListener("click", () => {
+    const link = el("a", undefined, {
+      href: chrome.runtime.getURL("setup/configure-local-ai.cmd"),
+      download: "BiliPlus-configure-local-ai.cmd",
+    });
+    document.body.append(link);
+    link.click();
+    link.remove();
+    $("#model-setup-status").textContent =
+      "已请求下载配置脚本。请在下载列表找到 BiliPlus-configure-local-ai.cmd 并双击运行；也可在完整源码目录双击同名脚本。AI 开关保持当前状态。";
+  });
   start.addEventListener("click", startModelSetup);
   check.addEventListener("click", () => void checkModel());
   cancel.addEventListener("click", () => cancelModelSetup());
@@ -505,8 +530,8 @@ function render() {
       page.append(
         el("p", "", { class: "section-note", id: "model-provider-note" }),
       );
-    for (const spec of BiliSettingsFields[group.group] || []) field(page, spec);
     if (group.group === "ai") modelControls(page);
+    for (const spec of BiliSettingsFields[group.group] || []) field(page, spec);
     if (group.group === "purify") {
       const list = el("div", undefined, { class: "hidden-rules" });
       for (const [key, rule] of Object.entries(C.HIDDEN)) {

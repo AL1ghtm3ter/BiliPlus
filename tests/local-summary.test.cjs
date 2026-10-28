@@ -584,12 +584,20 @@ test("mapped local chapters use the unchanged real panel seek path and every sta
       }),
     ),
   );
-  for (const file of ["common/config.js", "content.js"])
+  for (const file of ["common/config.js", "content.js"]) {
+    if (file === "content.js")
+      context.BiliFeatures = {
+        context: {
+          settings: () =>
+            context.BiliConfig.normalize({ ai: { enabled: true } }),
+        },
+      };
     vm.runInContext(
       fs.readFileSync(path.join(root, "extension", file), "utf8"),
       context,
       { filename: file },
     );
+  }
   const shadow = document.querySelector("#bili-codex-root").shadowRoot;
   shadow.querySelector(".start").click();
   await new Promise(setImmediate);

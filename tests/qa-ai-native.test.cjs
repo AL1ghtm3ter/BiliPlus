@@ -662,7 +662,7 @@ test("QA disable/re-enable does not let an old connection complete the replaceme
 });
 
 function background({ ai = {}, official = true, hold = false } = {}) {
-  const storage = { biliSettings: { ai } },
+  const storage = { biliSettings: { ai: { enabled: true, ...ai } } },
     native = [],
     fetches = [];
   const snapshot = {

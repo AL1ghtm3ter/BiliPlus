@@ -421,7 +421,7 @@ function deferred() {
   return { promise, resolve };
 }
 function background() {
-  const storage = {},
+  const storage = { biliSettings: { ai: { enabled: true } } },
     connections = [],
     fetches = [],
     nativeRequest = deferred();
