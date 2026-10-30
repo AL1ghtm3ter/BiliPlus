@@ -1,16 +1,16 @@
 {
   "name": "biliplus",
-  "version": "3.0.4",
+  "version": "3.1.0",
   "private": true,
   "license": "MIT",
-  "description": "BiliPlus 小电视助手: playback, recommendation history, filtering, local speech transcription and optional subtitle analysis",
+  "description": "BiliPlus 小电视助手: playback, recommendation history, filtering and page enhancements",
   "scripts": {
     "test": "node --test tests/*.test.cjs",
     "build": "node scripts/build.cjs",
     "package": "node scripts/package.cjs",
     "check": "node scripts/check.cjs",
-    "format": "prettier --write extension native/*.cjs scripts tests package.json",
-    "format:check": "prettier --check extension native/*.cjs scripts tests package.json"
+    "format": "prettier --write extension scripts tests package.json",
+    "format:check": "prettier --check extension scripts tests package.json"
   },
   "devDependencies": {
     "linkedom": "0.18.12",

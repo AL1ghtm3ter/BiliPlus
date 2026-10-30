@@ -44,8 +44,7 @@
         <section id="page-backup" class="page" hidden>
           <h2>备份与维护</h2>
           <p>
-            配置备份只包含本插件开关和规则，不含 Codex
-            登录、视频字幕或浏览器账号。
+            配置备份包含本插件开关、筛选规则和已选择的本地背景，不含浏览器账号。
           </p>
           <div class="button-row">
             <button id="export" type="button">导出配置</button
@@ -54,15 +53,8 @@
                 id="import"
                 type="file"
                 accept="application/json,.json" /></label
-            ><button id="clear-cache" type="button">清除 AI 与字幕缓存</button
             ><button id="reset" type="button">恢复默认设置</button>
           </div>
-          <h3>本机连接</h3>
-          <button id="check" type="button">检查模型与本机转写</button>
-          <p id="connection" role="status"></p>
-          <h3>最近诊断</h3>
-          <p>仅记录功能、错误、耗时与字幕条数，不记录密钥或完整字幕。</p>
-          <div id="diagnostics"></div>
         </section>
         <div class="savebar">
           <p id="status" role="status" aria-live="polite">

@@ -4,10 +4,7 @@ const C = BiliConfig,
 let config = C.normalize(),
   saved = "",
   localBackground = null,
-  backgroundChanged = false,
-  modelSetup = null,
-  modelSetupSequence = 0,
-  modelCheckSequence = 0;
+  backgroundChanged = false;
 const el = (tag, text, attributes = {}) => {
   const node = document.createElement(tag);
   if (text !== undefined) node.textContent = text;
@@ -24,7 +21,6 @@ function dirty() {
 }
 function changed() {
   BiliUI.applyTheme(document, config);
-  updateModelControls();
   notice(dirty() ? "有未保存的修改。" : "配置已保存。");
 }
 function field(page, spec) {
@@ -49,17 +45,12 @@ function field(page, spec) {
   if (min !== undefined) input.min = min;
   if (max !== undefined) input.max = max;
   if (type === "number") input.step = step;
-  if (type === "textarea")
-    input.maxLength = key === "ai.summaryPrompt" ? 10000 : 100000;
+  if (type === "textarea") input.maxLength = 100000;
   for (const [value, label] of choices) {
     const option = el("option", label, { value });
     input.append(option);
   }
   input.addEventListener(type === "checkbox" ? "change" : "input", () => {
-    if (modelSetup && ["ai.provider", "ai.localModel"].includes(key)) {
-      populate();
-      return;
-    }
     let value =
       type === "checkbox"
         ? input.checked
@@ -72,11 +63,6 @@ function field(page, spec) {
         .map((x) => x.trim())
         .filter(Boolean);
     C.set(config, key, value);
-    if (["ai.provider", "ai.localModel"].includes(key)) {
-      modelCheckSequence++;
-      const status = $("#model-setup-status");
-      if (status) status.textContent = "模型选择已变更，请检查或准备所选模型。";
-    }
     changed();
   });
   const copy = el("span", undefined, { class: "field-copy" });
@@ -87,7 +73,7 @@ function field(page, spec) {
 }
 function activate(name) {
   const valid = [...C.CATALOG.map((g) => g.group), "appearance", "backup"];
-  if (!valid.includes(name)) name = "ai";
+  if (!valid.includes(name)) name = "player";
   for (const page of document.querySelectorAll(".page"))
     page.hidden = page.id !== "page-" + name;
   for (const button of $("#nav").children)
@@ -128,314 +114,6 @@ function feature(page, key, title, description) {
   });
   row.append(label, favorite);
   page.append(row);
-}
-function modelConnectionText(result, provider, model) {
-  if (!result?.ok) return result?.error || "连接失败，请重试。";
-  if (result.provider && result.provider !== provider)
-    return "返回的服务与当前选择不同，请重新检查；不会自动切换服务。";
-  let text;
-  if (provider === "codex") {
-    text = "Codex 桥接已连接，请确保本机 Codex 已登录并有可用额度。";
-  } else if (
-    result.localRuntimeReady === true &&
-    result.localModelReady === true &&
-    result.localModel === model
-  ) {
-    text = "本机模型 " + model + " 已就绪，无需账号。";
-  } else if (result.localRuntimeReady === false) {
-    text = "本机运行环境尚未准备，点击“下载并配置本地模型”开始。";
-  } else if (
-    result.localRuntimeReady === true &&
-    result.localModelReady === false
-  ) {
-    text = "本机运行环境可用，所选模型尚未准备，请下载并配置。";
-  } else {
-    text = "桥接已连接；所选本机模型的状态尚未确认，请重新检查。";
-  }
-  return (
-    text +
-    (result.asrReady === true
-      ? " 本机转写已就绪。"
-      : result.asrReady === false
-        ? " 本机转写尚未安装。"
-        : " 本机转写状态尚未确认。")
-  );
-}
-function updateModelControls() {
-  const local = config.ai.provider === "local",
-    controls = $("#model-setup-controls"),
-    note = $("#model-provider-note");
-  if (controls) controls.hidden = !local;
-  const model = $('[data-key="ai.localModel"]'),
-    provider = $('[data-key="ai.provider"]');
-  if (model) {
-    model.closest(".field").hidden = !local;
-    model.disabled = !!modelSetup;
-  }
-  if (provider) provider.disabled = !!modelSetup;
-  if (note)
-    note.textContent = local
-      ? "AI 首次默认关闭，按需配置后再开启。文字在本机处理，无需账号；Qwen3 4B 首次约下载 2.5GB。"
-      : "使用本机已登录的 Codex，内容将交给对应模型服务处理，需要账号及可用额度。不会自动从本机模型切换到 Codex。";
-  for (const id of ["model-setup-start", "model-setup-check"])
-    if ($("#" + id)) $("#" + id).disabled = !!modelSetup;
-  if ($("#model-setup-cancel"))
-    $("#model-setup-cancel").disabled = !modelSetup || !!modelSetup.done;
-}
-function finishModelSetup(active, message, error = false) {
-  if (modelSetup !== active) return;
-  active.done = true;
-  modelSetup = null;
-  try {
-    active.port?.disconnect();
-  } catch {}
-  const status = $("#model-setup-status");
-  status.textContent = message;
-  status.classList.toggle("error", error);
-  $("#model-setup-progress").hidden = true;
-  updateModelControls();
-}
-function cancelModelSetup(message = "已取消准备，模型服务没有切换。") {
-  const active = modelSetup;
-  if (!active || active.done) return;
-  try {
-    active.port.postMessage({ type: "cancel", id: active.id });
-  } catch {}
-  finishModelSetup(active, message);
-}
-async function savePreparedModel(model) {
-  const stored = await chrome.storage.local.get("biliSettings"),
-    next = C.normalize(stored.biliSettings);
-  next.ai.provider = "local";
-  next.ai.localModel = model;
-  await chrome.storage.local.set({ biliSettings: next });
-  config.ai.provider = "local";
-  config.ai.localModel = model;
-  const savedConfig = C.normalize(JSON.parse(saved || "{}"));
-  savedConfig.ai.provider = "local";
-  savedConfig.ai.localModel = model;
-  saved = JSON.stringify(savedConfig);
-}
-async function checkModel() {
-  if (modelSetup) return;
-  const sequence = ++modelCheckSequence,
-    provider = config.ai.provider,
-    model = config.ai.localModel,
-    button = $("#model-setup-check");
-  button.disabled = true;
-  $("#model-setup-status").textContent = "正在检查本机模型…";
-  $("#model-setup-status").classList.remove("error");
-  try {
-    const result = await chrome.runtime.sendMessage({
-      type: "check",
-      provider,
-      model,
-    });
-    if (sequence !== modelCheckSequence || modelSetup) return;
-    $("#model-setup-status").textContent = modelConnectionText(
-      result,
-      provider,
-      model,
-    );
-  } catch (error) {
-    if (sequence === modelCheckSequence && !modelSetup)
-      $("#model-setup-status").textContent =
-        error.message || "模型状态检查失败，请重试。";
-  } finally {
-    if (!modelSetup) button.disabled = false;
-  }
-}
-function startModelSetup() {
-  if (modelSetup || config.ai.provider !== "local") return;
-  const model = C.normalize({
-      ai: { provider: "local", localModel: config.ai.localModel },
-    }).ai.localModel,
-    id =
-      typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
-        ? crypto.randomUUID()
-        : Date.now().toString(36) +
-          "-" +
-          Math.random().toString(36).slice(2) +
-          "-" +
-          ++modelSetupSequence,
-    active = { id, model, port: null, done: false };
-  modelSetup = active;
-  modelCheckSequence++;
-  $("#model-setup-status").textContent =
-    "正在连接本机，准备下载并配置 " + model + "…";
-  $("#model-setup-status").classList.remove("error");
-  const progress = $("#model-setup-progress");
-  progress.hidden = false;
-  progress.removeAttribute("value");
-  updateModelControls();
-  try {
-    active.port = chrome.runtime.connect({ name: "bili-model-setup" });
-    active.port.onMessage.addListener(async (packet) => {
-      if (modelSetup !== active || active.done) return;
-      if (!packet || typeof packet !== "object") {
-        finishModelSetup(active, "收到无效的模型准备信息，请重试。", true);
-        return;
-      }
-      if (packet.id !== undefined && packet.id !== active.id) return;
-      if (packet.type === "progress") {
-        let percent = packet.percent;
-        if (
-          percent === undefined &&
-          Number.isFinite(packet.completed) &&
-          Number.isFinite(packet.total) &&
-          packet.total > 0
-        )
-          percent = (packet.completed / packet.total) * 100;
-        if (
-          percent !== undefined &&
-          (!Number.isFinite(percent) || percent < 0 || percent > 100)
-        ) {
-          finishModelSetup(active, "模型准备进度无效，请重试。", true);
-          return;
-        }
-        const status =
-            typeof packet.status === "string"
-              ? packet.status.slice(0, 200)
-              : "",
-          stage =
-            typeof packet.stage === "string" ? packet.stage.slice(0, 80) : "";
-        if (!status && !stage && percent === undefined) {
-          finishModelSetup(active, "收到无效的模型准备进度，请重试。", true);
-          return;
-        }
-        if (percent === undefined) progress.removeAttribute("value");
-        else progress.value = percent;
-        $("#model-setup-status").textContent =
-          (status || stage || "正在准备模型") +
-          (percent === undefined ? "" : " · " + Math.round(percent) + "%");
-      } else if (packet.type === "result") {
-        if (
-          packet.result?.ready !== true ||
-          packet.result.model !== active.model
-        ) {
-          finishModelSetup(
-            active,
-            "所选模型尚未确认准备完成，请检查后重试。",
-            true,
-          );
-          return;
-        }
-        active.done = true;
-        updateModelControls();
-        try {
-          await savePreparedModel(active.model);
-          if (modelSetup !== active) return;
-          finishModelSetup(
-            active,
-            "本机模型 " + active.model + " 已就绪并已配置，无需账号。",
-          );
-          notice(
-            dirty()
-              ? "模型已配置；其他修改仍需点击保存设置。"
-              : "本机模型已准备并保存。",
-          );
-        } catch (error) {
-          finishModelSetup(
-            active,
-            "模型已准备，但配置保存失败：" +
-              (error.message || "请点击保存设置重试。"),
-            true,
-          );
-        }
-      } else if (packet.type === "error") {
-        finishModelSetup(
-          active,
-          typeof packet.error === "string"
-            ? packet.error
-            : "模型准备失败，请重试。",
-          true,
-        );
-      } else {
-        finishModelSetup(
-          active,
-          "模型准备协议不兼容，请重新加载扩展后重试。",
-          true,
-        );
-      }
-    });
-    active.port.onDisconnect.addListener(() => {
-      if (modelSetup === active && !active.done)
-        finishModelSetup(
-          active,
-          "本机连接已断开，模型准备尚未确认完成，请重试。",
-          true,
-        );
-    });
-    active.port.postMessage({ type: "setup-local-model", model, id });
-  } catch (error) {
-    finishModelSetup(
-      active,
-      "无法开始模型准备：" + (error.message || "请重试。"),
-      true,
-    );
-  }
-}
-function modelControls(page) {
-  const section = el("div", undefined, { id: "model-setup-controls" }),
-    buttons = el("div", undefined, { class: "button-row" }),
-    install = el("button", "下载一键配置脚本", {
-      type: "button",
-      id: "ai-installer-download",
-    }),
-    start = el("button", "下载并配置本地模型", {
-      type: "button",
-      id: "model-setup-start",
-    }),
-    check = el("button", "检查模型状态", {
-      type: "button",
-      id: "model-setup-check",
-    }),
-    cancel = el("button", "取消准备", {
-      type: "button",
-      id: "model-setup-cancel",
-      disabled: "disabled",
-    }),
-    progress = el("progress", undefined, {
-      id: "model-setup-progress",
-      max: "100",
-      "aria-label": "模型准备进度",
-      hidden: "hidden",
-    });
-  buttons.append(start, check, cancel);
-  section.append(
-    el("h3", "首次配置本机 AI"),
-    el(
-      "p",
-      "下载脚本后双击运行；若提示选择文件夹，请选择完整解压的 BiliPlus 目录。脚本会准备桥接、Node、Ollama 和 Qwen3 4B，首次需联网下载模型。浏览器不会自动执行脚本。",
-    ),
-    install,
-    el(
-      "p",
-      "配置完成后，先检查模型状态，再手动开启上方“字幕与总结”并保存。已有桥接时，可直接使用下方按钮准备模型；安装或准备模型不会自动开启 AI。",
-    ),
-    buttons,
-    progress,
-    el("p", "尚未检查本机模型。", {
-      id: "model-setup-status",
-      role: "status",
-      "aria-live": "polite",
-    }),
-  );
-  install.addEventListener("click", () => {
-    const link = el("a", undefined, {
-      href: chrome.runtime.getURL("setup/configure-local-ai.cmd"),
-      download: "BiliPlus-configure-local-ai.cmd",
-    });
-    document.body.append(link);
-    link.click();
-    link.remove();
-    $("#model-setup-status").textContent =
-      "已请求下载配置脚本。请在下载列表找到 BiliPlus-configure-local-ai.cmd 并双击运行；也可在完整源码目录双击同名脚本。AI 开关保持当前状态。";
-  });
-  start.addEventListener("click", startModelSetup);
-  check.addEventListener("click", () => void checkModel());
-  cancel.addEventListener("click", () => cancelModelSetup());
-  page.append(section);
 }
 function backgroundControls(page) {
   const row = el("div", undefined, { class: "button-row" }),
@@ -510,7 +188,6 @@ function populate() {
         "×" +
         localBackground.height
       : "尚未选择本地背景图片。";
-  updateModelControls();
 }
 function render() {
   $("#version").textContent = chrome.runtime.getManifest().version;
@@ -526,11 +203,6 @@ function render() {
     page.append(el("h2", group.title));
     for (const [key, title, hint] of group.items)
       if (key !== "purify.hiddenElements") feature(page, key, title, hint);
-    if (group.group === "ai")
-      page.append(
-        el("p", "", { class: "section-note", id: "model-provider-note" }),
-      );
-    if (group.group === "ai") modelControls(page);
     for (const spec of BiliSettingsFields[group.group] || []) field(page, spec);
     if (group.group === "purify") {
       const list = el("div", undefined, { class: "hidden-rules" });
@@ -641,13 +313,8 @@ $("#import").addEventListener("change", async (event) => {
       nextBackground = backup.localBackground
         ? BiliUI.validateBackground(backup.localBackground)
         : null;
-    cancelModelSetup("配置已更改，已取消原模型的准备。");
-    modelCheckSequence++;
     config = nextConfig;
     localBackground = nextBackground;
-    $("#model-setup-status").textContent =
-      "配置已更改，请重新检查或准备所选模型。";
-    $("#model-setup-status").classList.remove("error");
     backgroundChanged = true;
     populate();
     changed();
@@ -659,42 +326,12 @@ $("#import").addEventListener("change", async (event) => {
   }
 });
 $("#reset").addEventListener("click", () => {
-  cancelModelSetup("已恢复默认配置，模型准备已取消。");
-  modelCheckSequence++;
   config = C.normalize();
   localBackground = null;
-  $("#model-setup-status").textContent = "配置已恢复默认，请重新检查本机模型。";
-  $("#model-setup-status").classList.remove("error");
   backgroundChanged = true;
   populate();
   changed();
   notice("已恢复默认值，保存后生效。");
-});
-$("#clear-cache").addEventListener("click", async () => {
-  const data = await chrome.storage.local.get(null);
-  await chrome.storage.local.remove(
-    Object.keys(data).filter((key) => /^(summary:|ai:|transcript:)/.test(key)),
-  );
-  notice("已清除 AI 和字幕缓存，配置与背景仍保留。");
-});
-$("#check").addEventListener("click", async (event) => {
-  const button = event.currentTarget;
-  button.disabled = true;
-  $("#connection").textContent = "正在检查…";
-  try {
-    const provider = config.ai.provider,
-      model = config.ai.localModel,
-      result = await chrome.runtime.sendMessage({
-        type: "check",
-        provider,
-        model,
-      });
-    $("#connection").textContent = modelConnectionText(result, provider, model);
-  } catch (error) {
-    $("#connection").textContent = error.message;
-  } finally {
-    button.disabled = false;
-  }
 });
 window.addEventListener("beforeunload", (event) => {
   if (dirty()) {
@@ -702,12 +339,10 @@ window.addEventListener("beforeunload", (event) => {
     event.returnValue = "";
   }
 });
-window.addEventListener("pagehide", () => cancelModelSetup());
 (async () => {
   const stored = await chrome.storage.local.get([
     "biliSettings",
     "localBackground",
-    "diagnostics",
   ]);
   config = C.normalize(stored.biliSettings);
   if (stored.localBackground)
@@ -716,22 +351,4 @@ window.addEventListener("pagehide", () => cancelModelSetup());
     } catch {}
   saved = JSON.stringify(config);
   render();
-  const log = $("#diagnostics");
-  for (const item of (stored.diagnostics || []).slice(-20).reverse())
-    log.append(
-      el(
-        "div",
-        new Date(item.at).toLocaleString() +
-          " · " +
-          item.kind +
-          " · " +
-          item.status +
-          (item.error ? " · " + item.error : "") +
-          (item.elapsedMs
-            ? " · " + (item.elapsedMs / 1000).toFixed(1) + "秒"
-            : ""),
-        { class: "diagnostic" },
-      ),
-    );
-  if (!log.children.length) log.textContent = "尚无诊断记录。";
 })();

@@ -266,13 +266,13 @@ test("late or replaced player control bars remain free of split controls before 
 });
 
 for (const railClass of ["right-container", "playlist-container--right"])
-  test(`right comments keeps the subtitle assistant and native ${railClass} visible across restarts`, async () => {
+  test(`right comments keeps the independent sidebar widget and native ${railClass} visible across restarts`, async () => {
     const html = fixture.replace(
         '<aside class="right-container"></aside>',
-        `<aside class="${railClass}"><div class="up-panel-container">UP</div><div id="bili-codex-root">字幕助手</div><div id="danmukuBox">弹幕</div></aside>`,
+        `<aside class="${railClass}"><div class="up-panel-container">UP</div><div id="fixture-sidebar-tool">侧栏工具</div><div id="danmukuBox">弹幕</div></aside>`,
       ),
       h = await harness({ layout: { rightComments: true } }, html),
-      panel = h.document.querySelector("#bili-codex-root"),
+      panel = h.document.querySelector("#fixture-sidebar-tool"),
       rail = panel.parentElement;
     function assertVisible() {
       const ancestors = [];

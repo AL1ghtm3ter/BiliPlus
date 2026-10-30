@@ -1,11 +1,6 @@
 (() => {
   "use strict";
-  const tracks = new Map();
   let currentPlayer = {};
-  const details = new Map();
-  const binarySubtitle = (url) =>
-    url.hostname === "api.bilibili.com" &&
-    /^\/x\/v2\/(?:subtitle|dm)\/web\/view$/.test(url.pathname);
   const commentEndpoint = (url) =>
     url.hostname === "api.bilibili.com" &&
     /^\/x\/v2\/reply\/(?:(?:wbi\/)?main|reply)$/.test(url.pathname);
@@ -28,23 +23,6 @@
         return input.url;
     } catch {}
     return "";
-  }
-  function rememberTracks(cid, list) {
-    if (!cid || !Array.isArray(list)) return;
-    if (list.length || !tracks.get(cid)?.length) tracks.set(cid, list);
-    if (tracks.size > 16) tracks.delete(tracks.keys().next().value);
-  }
-  function inspectBinary(raw, data) {
-    try {
-      const url = new URL(raw, location.href);
-      if (!binarySubtitle(url)) return;
-      rememberTracks(
-        url.searchParams.get("oid"),
-        BiliSubtitles.decodeSubtitleTracks(data, {
-          legacyDm: url.pathname.includes("/dm/"),
-        }),
-      );
-    } catch {}
   }
   let historyEnabled = false,
     commentIpEnabled = false,
@@ -252,11 +230,10 @@
     try {
       const url = new URL(rawUrl, location.href);
       const player = /^\/x\/player\/(wbi\/)?v2$/.test(url.pathname),
-        subtitle = url.pathname === "/x/v2/subtitle/web/view",
-        cid = url.searchParams.get(player ? "cid" : "oid");
+        cid = url.searchParams.get("cid");
       if (
         url.hostname === "api.bilibili.com" &&
-        (player || subtitle) &&
+        player &&
         /^\d+$/.test(cid || "")
       ) {
         currentPlayer = {
@@ -264,7 +241,7 @@
             url.searchParams.get("bvid") ||
             (currentPlayer.cid === cid ? currentPlayer.bvid : "") ||
             "",
-          aid: url.searchParams.get(player ? "aid" : "pid") || "",
+          aid: url.searchParams.get("aid") || "",
           cid,
         };
         emit({ player: currentPlayer });
@@ -311,9 +288,7 @@
       const url = new URL(rawUrl, location.href);
       if (url.hostname !== "api.bilibili.com") return;
       if (/^\/x\/player\/(wbi\/)?v2$/.test(url.pathname)) {
-        const cid = url.searchParams.get("cid"),
-          list = data?.data?.subtitle?.subtitles;
-        rememberTracks(cid, list);
+        const cid = url.searchParams.get("cid");
         if (cid && currentPlayer.cid === cid) {
           currentPlayer = {
             bvid: currentPlayer.bvid || data?.data?.bvid || "",
@@ -342,10 +317,6 @@
         }
       }
       if (/\/web-interface\/view$/.test(url.pathname) && data?.data) {
-        if (data.data.bvid) {
-          details.set(data.data.bvid, data.data);
-          if (details.size > 30) details.delete(details.keys().next().value);
-        }
         emit({ videos: [cleanVideo(data.data)] });
       }
       if (commentEndpoint(url)) inspectComments(url, data, requestPage);
@@ -375,22 +346,14 @@
           rememberCommentRequest(url, method.toUpperCase(), requestPage);
       }
       observePlayer(raw);
-      if (url && (binarySubtitle(url) || jsonEndpoint(url)))
+      if (url && jsonEndpoint(url))
         pending
           .then((response) =>
-            binarySubtitle(url)
-              ? response
-                  .clone()
-                  .arrayBuffer()
-                  .then((data) => inspectBinary(raw, data))
-                  .catch(() => {})
-              : jsonEndpoint(url)
-                ? response
-                    .clone()
-                    .json()
-                    .then((data) => inspect(raw, data, false, requestPage))
-                    .catch(() => {})
-                : undefined,
+            response
+              .clone()
+              .json()
+              .then((data) => inspect(raw, data, false, requestPage))
+              .catch(() => {}),
           )
           .catch(() => {});
     } catch {}
@@ -415,21 +378,11 @@
         emit({ homeFeed: { phase: "request" } });
       if (target)
         rememberCommentRequest(target, methods.get(this), requestPage);
-      if (target && (binarySubtitle(target) || jsonEndpoint(target)))
+      if (target && jsonEndpoint(target))
         this.addEventListener(
           "load",
           () => {
             try {
-              if (binarySubtitle(target)) {
-                if (this.responseType === "arraybuffer")
-                  inspectBinary(url, this.response);
-                else if (this.responseType === "blob")
-                  this.response
-                    .arrayBuffer()
-                    .then((data) => inspectBinary(url, data))
-                    .catch(() => {});
-                return;
-              }
               if (
                 !jsonEndpoint(target) ||
                 (this.responseType && this.responseType !== "json")
@@ -486,61 +439,6 @@
       clearTimeout(seedTimer);
       seedAttempts = 0;
       seedFeed();
-    } catch {}
-  });
-  window.addEventListener("bili-codex-request", (event) => {
-    try {
-      const request = JSON.parse(event.detail);
-      if (typeof request.id !== "string" || request.id.length > 80) return;
-      const pageUrl = new URL(location.href),
-        playlist = /^\/list\//.test(location.pathname),
-        expected = playlist
-          ? currentPlayer.bvid ||
-            (currentPlayer.aid ? "" : pageUrl.searchParams.get("bvid"))
-          : location.pathname.match(/\/video\/(BV[0-9A-Za-z]{10})/)?.[1];
-      const original = window.__INITIAL_STATE__?.videoData;
-      const usable =
-        original &&
-        (!expected || original.bvid === expected) &&
-        (!playlist ||
-          !currentPlayer.aid ||
-          String(original.aid) === String(currentPlayer.aid));
-      let data = details.get(expected) || (usable ? original : null);
-      if (
-        playlist &&
-        currentPlayer.cid &&
-        data &&
-        !data.pages?.some((page) => String(page.cid) === currentPlayer.cid) &&
-        String(data.cid) !== currentPlayer.cid
-      )
-        data = null;
-      const p = Number(pageUrl.searchParams.get("p") || 1),
-        page =
-          (playlist
-            ? data?.pages?.find(
-                (page) => String(page.cid) === String(currentPlayer.cid),
-              )
-            : null) || data?.pages?.[p - 1],
-        cid = playlist
-          ? currentPlayer.cid || page?.cid || data?.cid
-          : page?.cid || data?.cid;
-      window.dispatchEvent(
-        new CustomEvent("bili-codex-snapshot", {
-          detail: JSON.stringify({
-            id: request.id,
-            bvid: playlist ? currentPlayer.bvid || data?.bvid : data?.bvid,
-            aid: currentPlayer.aid || data?.aid,
-            cid,
-            title:
-              page?.part && data?.videos > 1
-                ? data.title + " · " + page.part
-                : data?.title,
-            duration:
-              playlist && !data?.bvid ? 0 : page?.duration || data?.duration,
-            tracks: tracks.get(String(cid)) || [],
-          }),
-        }),
-      );
     } catch {}
   });
 })();

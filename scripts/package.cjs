@@ -90,7 +90,7 @@ console.log(
       ".runtime",
       "node_modules",
       "dist",
-      "machine-specific native configuration and binaries",
+      "native runtimes, models and installers",
     ],
   }),
 );

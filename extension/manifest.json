@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "小电视助手 · BiliPlus",
-  "description": "B站倍速、推荐历史、封面查看、评论属地与界面净化；附带字幕读取、本机语音转写及可选文字分析。独立源码版。",
-  "version": "3.0.4",
+  "description": "B站无级倍速、推荐历史、封面查看、评论属地、右侧评论与界面净化。浏览器直接运行。独立源码版。",
+  "version": "3.1.0",
   "icons": {
     "16": "icons/icon16.png",
     "32": "icons/icon32.png",
@@ -11,8 +11,8 @@
   },
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAz3rkFNBTSTTo/cLJNV9SpWbYozjOZdzqnJt8LSAagmVBgrnoanXlnRvZIrIVYEQQvlLi7Cykg73TtIunX+vE9ElQWD0hRAl8SerMoF+uWkCvUiiHR63gNPI/WIwA9RehpFTCZDb+oLatj3maDgZPyCrmiBQBrqwr1Qd2CHjM3yaIw/TwpKHavaefjfiISSe/2NcdP28NAtYV8UAdFw9FzekCNYrfArLJq3ZODyPhKD6oAa2GvCNqWlUE5PJVqoNbKnPhaa18OToFCizgQJmkT0J+PobbbkKlT0N9JWb82JPfkYL6CwLiWn1jnXGCdh/2i4fcPbrvpsLk4Wq2g+OvlwIDAQAB",
   "minimum_chrome_version": "120",
-  "permissions": ["storage", "nativeMessaging"],
-  "host_permissions": ["https://api.bilibili.com/*", "https://*.hdslb.com/*"],
+  "permissions": ["storage"],
+  "host_permissions": ["https://api.bilibili.com/*"],
   "background": {
     "service_worker": "background.js"
   },
@@ -32,7 +32,7 @@
         "https://www.bilibili.com/*",
         "https://search.bilibili.com/*"
       ],
-      "js": ["subtitles.js", "capture.js"],
+      "js": ["capture.js"],
       "run_at": "document_start",
       "world": "MAIN"
     },
@@ -44,22 +44,14 @@
       "js": [
         "common/config.js",
         "common/ui.js",
-        "subtitles.js",
         "features/runtime.js",
         "features/player.js",
         "features/filter.js",
         "features/layout.js",
         "features/home.js",
-        "features/index.js",
-        "content.js"
+        "features/index.js"
       ],
       "run_at": "document_idle"
-    }
-  ],
-  "web_accessible_resources": [
-    {
-      "resources": ["panel.css", "common/brand.svg"],
-      "matches": ["https://www.bilibili.com/*"]
     }
   ],
   "options_ui": {

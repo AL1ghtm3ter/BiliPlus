@@ -1,28 +1,7 @@
 (function (root) {
   "use strict";
   const DEFAULTS = {
-    schema: 2,
-    ai: {
-      enabled: false,
-      provider: "local",
-      localModel: "qwen3:4b",
-      autoAds: false,
-      skipAds: true,
-      adThreshold: 0.85,
-      skipCountdown: 3,
-      summaryPrompt: "",
-      asrFallback: true,
-      asrLanguage: "auto",
-      autoSummary: false,
-      summaryMinDuration: 0,
-      summaryMaxDuration: 0,
-      autoAsr: false,
-      asrMinDuration: 0,
-      asrMaxDuration: 0,
-      adDetectionMode: "smart",
-      adMinDuration: 0,
-      adMaxDuration: 0,
-    },
+    schema: 3,
     player: {
       speedEnabled: false,
       speed: 1,
@@ -87,7 +66,7 @@
     appearance: {
       theme: "system",
       dailyQuoteEnabled: true,
-      favoriteFeatureIds: ["ai.enabled"],
+      favoriteFeatureIds: [],
       popupGroupCollapseState: ["player", "layout", "filter", "purify"],
     },
   };
@@ -133,20 +112,6 @@
     },
   };
   const CATALOG = [
-    {
-      group: "ai",
-      title: "字幕与总结",
-      items: [
-        ["ai.enabled", "字幕与总结", "首次默认关闭，按需配置本机 AI 后开启"],
-        ["ai.autoAds", "自动识别广告", "开始播放后识别口播推广，调用所选模型"],
-        ["ai.skipAds", "自动跳过广告", "仅跳过达到置信度门槛的片段"],
-        [
-          "ai.asrFallback",
-          "无字幕时使用本机转写",
-          "优先已有字幕；找不到时下载当前可播放音轨并在本机识别",
-        ],
-      ],
-    },
     {
       group: "player",
       title: "功能增强",
@@ -260,25 +225,6 @@
       ...out.player.presetShortcuts,
     ])
       parseShortcut(shortcut);
-    for (const name of ["summary", "asr", "ad"]) {
-      out.ai[name + "MinDuration"] = clamp(
-        out.ai[name + "MinDuration"],
-        0,
-        86400,
-      );
-      out.ai[name + "MaxDuration"] = clamp(
-        out.ai[name + "MaxDuration"],
-        0,
-        86400,
-      );
-      if (
-        out.ai[name + "MaxDuration"] &&
-        out.ai[name + "MaxDuration"] < out.ai[name + "MinDuration"]
-      )
-        throw Error("自动处理时长上限不能小于下限。");
-    }
-    if (!["cache", "smart", "always"].includes(out.ai.adDetectionMode))
-      out.ai.adDetectionMode = "smart";
     if (!["url", "local"].includes(out.home.backgroundSource))
       out.home.backgroundSource = "url";
     out.home.thresholdMultiplier = clamp(out.home.thresholdMultiplier, 0.5, 5);
@@ -310,14 +256,6 @@
       out.appearance.popupGroupCollapseState.filter((key) =>
         CATALOG.some((g) => g.group === key),
       );
-    out.ai.adThreshold = clamp(out.ai.adThreshold, 0.5, 1);
-    if (!["local", "codex"].includes(out.ai.provider))
-      throw Error("模型服务无效，请选择本机模型或 Codex。");
-    if (!["qwen3:1.7b", "qwen3:4b", "qwen3:8b"].includes(out.ai.localModel))
-      throw Error("本机模型无效，请选择设置中支持的 Qwen3 模型。");
-    out.ai.skipCountdown = Math.round(clamp(out.ai.skipCountdown, 0, 10));
-    if (!["auto", "zh", "en", "ja", "ko"].includes(out.ai.asrLanguage))
-      out.ai.asrLanguage = "auto";
     out.purify.hiddenElements = out.purify.hiddenElements.filter((k) =>
       Object.hasOwn(HIDDEN, k),
     );

@@ -258,7 +258,6 @@ async function harness({
       filename: name,
     });
   load("common/config.js");
-  load("subtitles.js");
   load("features/runtime.js");
   load("features/home.js");
   load("capture.js");

@@ -4,7 +4,10 @@ const fs = require("node:fs"),
 const root = path.resolve(__dirname, ".."),
   source = path.join(root, "extension"),
   target = path.join(root, "dist", "extension");
-// Copy readable source verbatim. Never delete arbitrary or computed parent directories.
+// Rebuild only the fixed output directory, so removed features cannot survive a rebuild.
+if (target !== path.join(root, "dist", "extension"))
+  throw Error("Invalid build target");
+fs.rmSync(target, { recursive: true, force: true });
 fs.mkdirSync(target, { recursive: true });
 fs.cpSync(source, target, { recursive: true, force: true });
 console.log(

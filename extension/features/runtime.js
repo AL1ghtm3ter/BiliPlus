@@ -91,6 +91,18 @@
   }
   const CARD =
     ".bili-video-card,.video-page-card-small,.bili-video-card__wrap,.video-list-item";
+  function cdnUrl(value) {
+    const url = new URL(value, "https://www.bilibili.com");
+    if (
+      url.protocol !== "https:" ||
+      !url.hostname.endsWith(".hdslb.com") ||
+      url.username ||
+      url.password ||
+      (url.port && url.port !== "443")
+    )
+      throw Error("仅支持 B站 HTTPS 图片地址。");
+    return url.href;
+  }
   const api = {
     modules,
     Scope,
@@ -100,6 +112,7 @@
     count,
     duration,
     CARD,
+    cdnUrl,
     register: (name, start) => modules.push({ name, start }),
   };
   root.BiliFeatures = api;

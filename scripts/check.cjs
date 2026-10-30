@@ -18,7 +18,7 @@ function walk(dir) {
     }
   }
 }
-for (const folder of ["extension", "native", "scripts", "tests"])
+for (const folder of ["extension", "scripts", "tests"])
   walk(path.join(root, folder));
 const manifest = JSON.parse(
   fs.readFileSync(path.join(root, "extension/manifest.json"), "utf8"),

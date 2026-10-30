@@ -92,7 +92,6 @@ function harness({
         Object.assign(this, options);
       }
     },
-    BiliSubtitles: { decodeSubtitleTracks: () => [] },
   });
   vm.runInContext(
     fs.readFileSync(path.join(root, "extension/capture.js"), "utf8"),

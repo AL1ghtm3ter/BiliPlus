@@ -7,62 +7,6 @@
     ...options,
   });
   const FIELDS = {
-    ai: [
-      field("ai.provider", "文字分析服务", {
-        type: "select",
-        choices: [
-          ["local", "本机模型（无需账号）"],
-          ["codex", "Codex（已有账号）"],
-        ],
-        hint: "仅控制总结、问答、广告识别和整理成文；语音转写始终在本机使用 Whisper。",
-      }),
-      field("ai.localModel", "本机模型", {
-        type: "select",
-        choices: [
-          ["qwen3:4b", "Qwen3 4B（默认）"],
-          ["qwen3:1.7b", "Qwen3 1.7B（占用更少）"],
-          ["qwen3:8b", "Qwen3 8B（需要更多内存）"],
-        ],
-        hint: "Qwen3 4B 首次约下载 2.5GB；准备完成后在本机运行，不需要注册或登录。",
-      }),
-      field("ai.adThreshold", "自动跳过的最低置信度", {
-        min: 0.5,
-        max: 1,
-        step: 0.05,
-        hint: "未达门槛的片段仅展示，不自动跳过。",
-      }),
-      field("ai.skipCountdown", "跳过前倒计时（秒）", { min: 0, max: 10 }),
-      field("ai.asrLanguage", "本机识别语言", {
-        type: "select",
-        choices: [
-          ["auto", "自动识别"],
-          ["zh", "中文"],
-          ["en", "英语"],
-          ["ja", "日语"],
-          ["ko", "韩语"],
-        ],
-      }),
-      field("ai.summaryPrompt", "总结风格要求", {
-        type: "textarea",
-        hint: "可侧重论点、步骤或概念；仍只依据字幕，不添加外部事实。",
-      }),
-      field("ai.autoSummary", "播放后自动总结", {
-        type: "checkbox",
-        hint: "播放到 15 秒后，每个视频触发一次，调用所选模型。",
-      }),
-      field("ai.autoAsr", "播放后自动准备字幕", {
-        type: "checkbox",
-        hint: "需要开启无字幕本机转写；优先已有字幕，没有时才本机识别。",
-      }),
-      field("ai.adDetectionMode", "广告识别方式", {
-        type: "select",
-        choices: [
-          ["cache", "仅使用缓存（不调用模型）"],
-          ["smart", "优先缓存，缺失时调用所选模型"],
-          ["always", "每次重新识别（调用所选模型）"],
-        ],
-      }),
-    ],
     player: [
       field("player.speed", "默认倍速", { min: 0.1, max: 5, step: 0.1 }),
       field("player.step", "快捷键步进", { min: 0.05, max: 2, step: 0.05 }),
@@ -164,22 +108,6 @@
       }),
     ],
   };
-  for (const [name, label] of [
-    ["summary", "自动总结"],
-    ["asr", "自动准备字幕"],
-    ["ad", "自动广告识别"],
-  ])
-    for (const [edge, word] of [
-      ["Min", "最短"],
-      ["Max", "最长"],
-    ])
-      FIELDS.ai.push(
-        field("ai." + name + edge + "Duration", label + word + "时长（秒）", {
-          min: 0,
-          max: 86400,
-          hint: "0 表示不限制；手动执行不受此条件限制。",
-        }),
-      );
   for (const [name, label] of [
     ["Duration", "时长（秒）"],
     ["Plays", "播放量"],

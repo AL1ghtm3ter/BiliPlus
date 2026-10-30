@@ -482,9 +482,7 @@
             const data = await info(bvid);
             if (stopped || !button.isConnected) return;
             showCover(
-              BiliSubtitles.subtitleUrl(
-                String(data.pic).replace(/^http:/, "https:"),
-              ),
+              F.cdnUrl(String(data.pic).replace(/^http:/, "https:")),
               data.title,
             );
           } catch (error) {
@@ -527,9 +525,7 @@
         const imageBox = F.create("div", undefined, { class: "image" }),
           image = F.create("img", undefined, {
             alt: "视频预览画面",
-            src: BiliSubtitles.subtitleUrl(
-              String(data.pic).replace(/^http:/, "https:"),
-            ),
+            src: F.cdnUrl(String(data.pic).replace(/^http:/, "https:")),
           });
         image.style.width = "340px";
         image.style.height = "190px";
@@ -570,7 +566,7 @@
             sheet = Math.floor(i / (cols * rows)),
             local = i % (cols * rows);
           if (!shot.image[sheet]) return;
-          image.src = BiliSubtitles.subtitleUrl(
+          image.src = F.cdnUrl(
             String(shot.image[sheet]).replace(/^http:/, "https:"),
           );
           image.style.width = cols * 340 + "px";

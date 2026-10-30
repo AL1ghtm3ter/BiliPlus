@@ -37,18 +37,6 @@ function toggle(key, title, hint = "") {
 function render() {
   BiliUI.applyTheme(document, config);
   $("#version").textContent = "v" + chrome.runtime.getManifest().version;
-  $("#ai-toggle").replaceChildren(
-    toggle(
-      "ai.enabled",
-      "字幕与总结",
-      (config.ai.enabled ? "视频播放页 · " : "默认关闭，可按需开启 · ") +
-        (config.ai.provider === "local"
-          ? "本机处理，无需账号"
-          : "使用已登录的 Codex") +
-        " · " +
-        (config.ai.enabled ? "已开启" : "已关闭"),
-    ),
-  );
   $("#theme").title =
     "外观：" +
     ({ system: "跟随系统", light: "浅色", dark: "深色" }[
@@ -63,13 +51,11 @@ function render() {
   $("#favorites").replaceChildren(
     ...config.appearance.favoriteFeatureIds
       .map((key) => all.find((item) => item[0] === key))
-      .filter((item) => item && item[0] !== "ai.enabled")
+      .filter(Boolean)
       .map(([key, title]) => toggle(key, title)),
   );
   $("#groups").replaceChildren();
-  for (const group of BiliConfig.CATALOG.filter(
-    (item) => item.group !== "ai",
-  )) {
+  for (const group of BiliConfig.CATALOG) {
     const details = el("details", undefined, { class: "feature-group" }),
       summary = el("summary"),
       meta = el("span", undefined, { class: "group-meta" }),
@@ -135,70 +121,8 @@ $("#theme").addEventListener("click", async () => {
 $("#settings").addEventListener("click", () =>
   chrome.runtime.openOptionsPage(),
 );
-$("#ai-setup").addEventListener("click", () =>
-  chrome.tabs.create({ url: chrome.runtime.getURL("options.html#ai") }),
-);
-$("#check").addEventListener("click", async (event) => {
-  const button = event.currentTarget;
-  button.disabled = true;
-  $("#status").textContent = "正在连接本机桥接…";
-  try {
-    const provider = config.ai.provider,
-      model = config.ai.localModel,
-      result = await chrome.runtime.sendMessage({
-        type: "check",
-        provider,
-        model,
-      });
-    let status;
-    if (!result?.ok)
-      status = result?.error || "本机连接未就绪，请打开设置检查。";
-    else if (result.provider && result.provider !== provider)
-      status = "返回的服务与当前选择不同，请打开设置检查；不会自动切换服务。";
-    else if (provider === "codex")
-      status = "Codex 桥接已连接，请确认本机 Codex 已登录。";
-    else if (
-      result.localRuntimeReady === true &&
-      result.localModelReady === true &&
-      result.localModel === model
-    )
-      status = "本机模型 " + model + " 已就绪，无需账号。";
-    else if (
-      result.localRuntimeReady === false ||
-      result.localModelReady === false
-    )
-      status = "本机模型尚未准备，请打开设置下载并配置。";
-    else status = "桥接已连接；本机模型状态尚未确认，请打开设置检查。";
-    $("#status").textContent =
-      status +
-      (result?.ok
-        ? result.asrReady === true
-          ? " 转写已就绪。"
-          : result.asrReady === false
-            ? " 转写尚未安装。"
-            : " 转写状态尚未确认。"
-        : "");
-  } catch {
-    $("#status").textContent = "连接失败，请运行安装脚本。";
-  } finally {
-    button.disabled = false;
-  }
-});
-$("#show").addEventListener("click", async () => {
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  try {
-    await chrome.tabs.sendMessage(tab.id, { type: "open-panel" });
-    window.close();
-  } catch {
-    $("#status").textContent = "请先打开 B站视频并刷新页面。";
-  }
-});
 (async () => {
-  const data = await chrome.storage.local.get(["biliSettings", "biliStats"]);
+  const data = await chrome.storage.local.get("biliSettings");
   config = BiliConfig.normalize(data.biliSettings);
-  const seconds = Math.round(data.biliStats?.skippedSeconds || 0);
-  $("#stats").textContent = seconds
-    ? "广告跳过累计节省 " + seconds + " 秒"
-    : "";
   render();
 })();

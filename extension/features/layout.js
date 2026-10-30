@@ -67,7 +67,7 @@
         "aria-label": "评论",
       });
       const style = F.create("style");
-      // Keep the native right rail (and its subtitle assistant) in the page's
+      // Keep the native right rail in the page's
       // layout. Only arrange the player and comments inside the left column.
       style.textContent =
         "[data-bcx-right-comments]{display:grid;gap:8px;width:100%;min-width:0}[data-bcx-player-column]{min-width:0}[data-bcx-comment-column]{min-width:0;max-height:80vh;overflow:auto;background:var(--bg1,#fff);border-radius:12px;padding:0 12px 16px}[data-bcx-comment-column] #commentapp{width:100%!important;margin:0!important}@media(max-width:1000px){[data-bcx-right-comments]{display:block}[data-bcx-right-comments]>[role=separator]{display:none}[data-bcx-comment-column]{margin-top:16px;max-height:70vh}}";

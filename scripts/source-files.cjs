@@ -23,40 +23,19 @@ function sourceFiles(root) {
       else if (allowed(name)) add(name);
     }
   }
-  walk("extension", (name) => /\.(?:js|css|html|svg|png|json|cmd)$/.test(name));
+  walk("extension", (name) => /\.(?:js|css|html|svg|png|json)$/.test(name));
   walk("tests", (name) => /\.test\.cjs$/.test(name));
   for (const name of [
-    "native/Launcher.cs",
-    "native/RuntimeHost.cs",
-    "native/runtime-start.cjs",
-    "native/host.cjs",
-    "native/runner.cjs",
-    "native/tasks.cjs",
-    "native/local-model.cjs",
-    "native/local-summary.cjs",
-    "native/setup-local.cjs",
-    "native/asr.cjs",
-    "native/asr.py",
-    "native/setup_asr.py",
-    "native/requirements-asr.txt",
-    "native/requirements-asr.lock.txt",
-    "native/summary.schema.json",
-    "native/chat.schema.json",
-    "native/ads.schema.json",
-    "native/polish.schema.json",
-    "native/job/AGENTS.md",
     "scripts/source-files.cjs",
     "scripts/build.cjs",
     "scripts/check.cjs",
     "scripts/package.cjs",
-    "scripts/bootstrap-node.ps1",
     "scripts/render-icons.py",
     "README.md",
     "FEATURES.md",
     "ARCHITECTURE.md",
     "CHANGELOG.md",
     "LOGO.md",
-    "MODEL-SETUP-UI.md",
     "THIRD-PARTY-NOTICES.md",
     "RELEASE-TESTS.md",
     "LICENSE",
@@ -68,10 +47,6 @@ function sourceFiles(root) {
     ".gitignore",
     ".gitattributes",
     "extension-id.txt",
-    "BiliPlus-configure-local-ai.cmd",
-    "安装本机桥接.ps1",
-    "安装本机转写.ps1",
-    "卸载本机桥接.ps1",
   ])
     add(name);
   return files.sort();
